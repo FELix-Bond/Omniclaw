@@ -282,8 +282,14 @@ function getSystemPrompt() {
   const ownerProfile = readOwnerProfile();
   return `You are TommyClaw, the AI CEO of ${state.company}, talking directly with ${state.owner}. You are part of the OmniClaw platform — an autonomous executive AI stack. Your website is tommyclaw.com.
 
+WRITE ACTIONS — you CAN write to external systems using action blocks. Include them inline in your reply:
+- Write a new Obsidian note:  [[ACTION:obsidian_write|Note Title|Content here]]
+- Append to existing note:    [[ACTION:obsidian_append|Note Title|Content to add]]
+- Save to system memory:      [[ACTION:memory_write|filename.md|Content here]]
+The server strips these blocks and executes them silently. Use them whenever the user asks you to save, log, record, or write something. You can include as many as needed in one reply.
+
 HONESTY RULES — never break these:
-- Never claim capabilities you don't have. You cannot send emails, browse the web, access servers, run code, or control any external system.
+- Never claim capabilities you don't have beyond the write actions above.
 - Never confirm something just because the user states it. If you don't know, say so.
 - Never invent domain names, email addresses, credentials, or infrastructure details unless explicitly told them in this conversation.
 - If asked whether you have access to something and you don't — say no clearly.
@@ -356,6 +362,59 @@ async function callAI(messages, systemPromptOverride) {
   return 'No AI provider is configured or responding. Add an API key to your .env file (ANTHROPIC_API_KEY, GROQ_API_KEY, or GOOGLE_AI_API_KEY).';
 }
 
+// =============================================================================
+// ACTION PARSER — agents embed [[ACTION:type|arg1|arg2]] in replies
+// Server strips them, executes them, appends ✅ confirmation to visible reply
+// =============================================================================
+const ACTION_RE = /\[\[ACTION:([^\]]+)\]\]/g;
+
+async function executeActions(reply) {
+  const results = [];
+  let clean = reply;
+  const matches = [...reply.matchAll(ACTION_RE)];
+
+  for (const match of matches) {
+    const parts = match[1].split('|').map(s => s.trim());
+    const type = parts[0].toLowerCase();
+    try {
+      if (type === 'obsidian_write') {
+        const [, title, ...bodyParts] = parts;
+        const content = bodyParts.join('|');
+        const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+        if (!vaultPath) { results.push('⚠️ No vault path set — add OBSIDIAN_VAULT_PATH to .env'); continue; }
+        const safe = (title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
+        const dest = path.join(vaultPath, `${safe}.md`);
+        fs.writeFileSync(dest, `# ${safe}\n\n${content}\n`, 'utf8');
+        results.push(`✅ Written to Obsidian: **${safe}.md**`);
+      } else if (type === 'obsidian_append') {
+        const [, title, ...bodyParts] = parts;
+        const content = bodyParts.join('|');
+        const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+        if (!vaultPath) { results.push('⚠️ No vault path set — add OBSIDIAN_VAULT_PATH to .env'); continue; }
+        const safe = (title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
+        const dest = path.join(vaultPath, `${safe}.md`);
+        fs.appendFileSync(dest, `\n${content}\n`, 'utf8');
+        results.push(`✅ Appended to Obsidian: **${safe}.md**`);
+      } else if (type === 'memory_write') {
+        const [, filename, ...bodyParts] = parts;
+        const content = bodyParts.join('|');
+        const safe = (filename || 'note').replace(/[/\\?%*:|"<>]/g, '-');
+        fs.writeFileSync(path.join(MEMORY_DIR, safe), content, 'utf8');
+        results.push(`✅ Saved to memory: **${safe}**`);
+      } else {
+        results.push(`⚠️ Unknown action: ${type}`);
+      }
+    } catch (err) {
+      results.push(`❌ Action failed (${type}): ${err.message}`);
+    }
+  }
+
+  // Strip action blocks from visible text
+  clean = clean.replace(ACTION_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+  if (results.length) clean += '\n\n' + results.join('\n');
+  return clean;
+}
+
 app.post('/api/chat', async (req, res) => {
   const { message, source } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
@@ -365,7 +424,8 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const msgs = chatHistory.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.content }));
-    const reply = await callAI(msgs);
+    const rawReply = await callAI(msgs);
+    const reply = await executeActions(rawReply);
     const response = { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() };
     chatHistory.push(response);
     if (chatHistory.length > 200) chatHistory.splice(0, 50);
@@ -813,7 +873,8 @@ async function pollTelegram() {
       try {
         const systemPrompt = getAgentSystemPrompt(targetAgent);
         const msgs = [{ role: 'user', content: messageText }];
-        const reply = await callAI(msgs, systemPrompt);
+        const rawReply = await callAI(msgs, systemPrompt);
+        const reply = await executeActions(rawReply);
         const displayName = `${persona.emoji} ${persona.name}`;
         await sendTelegram(chatId, `${displayName}\n\n${reply}`);
         io.emit('chat:message', { role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
@@ -1311,7 +1372,8 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
   const metaPath = path.join(TEMP_AGENTS_DIR, req.params.id, 'meta.json');
   const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : {};
   try {
-    const reply = await callAI([{ role: 'user', content: message }], soul);
+    const rawReply = await callAI([{ role: 'user', content: message }], soul);
+    const reply = await executeActions(rawReply);
     res.json({ agent: meta.name || req.params.id, category: meta.category, reply });
   } catch (e) {
     res.status(500).json({ error: e.message });
