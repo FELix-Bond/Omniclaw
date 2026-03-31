@@ -128,6 +128,16 @@
 
   code { font-family: 'SF Mono', 'Fira Code', monospace; background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
 
+  .oneliner-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+  .oneliner-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+  .oneliner-command { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; color: var(--green); word-break: break-all; line-height: 1.5; background: #0a0c10; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; }
+  .btn-copy { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 9px 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; width: 100%; }
+  .btn-copy:hover { background: #4a7de0; }
+  .btn-copy.copied { background: var(--green); color: #000; }
+  .platform-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .platform-tab { padding: 6px 14px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); transition: all 0.15s; }
+  .platform-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
   .badge-free { background: rgba(61,214,140,0.18); color: var(--green); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.04em; }
   .badge-paid { background: rgba(240,180,41,0.15); color: var(--yellow); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
 
@@ -620,13 +630,55 @@
       <ul id="fileList" style="list-style:none;padding:0;display:grid;gap:8px;"></ul>
     </div>
     <div class="card">
-      <div class="card-title">Next Steps</div>
-      <ol style="padding-left:20px;line-height:2;font-size:0.9rem;color:var(--muted);">
-        <li>Copy <code>deploy-omniclaw.sh</code> to your target machine</li>
-        <li>Run: <code id="deployCmd">chmod +x deploy-omniclaw.sh && ./deploy-omniclaw.sh</code></li>
-        <li>Open <code id="dashUrl">http://localhost:3000</code> in your browser</li>
-        <li>Push the generated files to GitHub: <code id="ghCmd">git remote add origin https://github.com/USER/REPO.git && git push -u origin main</code></li>
-      </ol>
+      <div class="card-title">How to Install</div>
+
+      <div class="platform-tabs">
+        <div class="platform-tab active" onclick="switchPlatform('macos',this)">🍎 macOS</div>
+        <div class="platform-tab" onclick="switchPlatform('windows',this)">🪟 Windows</div>
+        <div class="platform-tab" onclick="switchPlatform('linux',this)">🐧 Linux</div>
+      </div>
+
+      <!-- macOS -->
+      <div id="install-macos">
+        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">Open <strong>Terminal</strong> (Spotlight → Terminal) and paste this one command. It unzips and installs everything automatically.</p>
+        <div class="oneliner-box">
+          <div class="oneliner-label">Terminal — paste this one line</div>
+          <div class="oneliner-command" id="cmd-macos"></div>
+          <button class="btn-copy" onclick="copyCmd('cmd-macos',this)">Copy Command</button>
+        </div>
+        <p style="font-size:0.78rem;color:var(--muted);line-height:1.6;">
+          <strong style="color:var(--text)">How to open Terminal:</strong> Press <code>⌘ Space</code> → type <code>Terminal</code> → Enter<br>
+          Then paste the command above and press Enter. GitHub login opens in your browser automatically.
+        </p>
+      </div>
+
+      <!-- Windows -->
+      <div id="install-windows" style="display:none">
+        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">Open <strong>PowerShell</strong> and paste this command. Requires WSL — if not installed, it will tell you.</p>
+        <div class="oneliner-box">
+          <div class="oneliner-label">PowerShell — paste this one line</div>
+          <div class="oneliner-command" id="cmd-windows"></div>
+          <button class="btn-copy" onclick="copyCmd('cmd-windows',this)">Copy Command</button>
+        </div>
+        <p style="font-size:0.78rem;color:var(--muted);line-height:1.6;">
+          <strong style="color:var(--text)">How to open PowerShell:</strong> Press <code>Win+X</code> → Windows PowerShell<br>
+          If WSL isn't installed: open PowerShell as Administrator and run <code>wsl --install</code> first.
+        </p>
+      </div>
+
+      <!-- Linux -->
+      <div id="install-linux" style="display:none">
+        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;">Open Terminal and paste this one command.</p>
+        <div class="oneliner-box">
+          <div class="oneliner-label">Terminal — paste this one line</div>
+          <div class="oneliner-command" id="cmd-linux"></div>
+          <button class="btn-copy" onclick="copyCmd('cmd-linux',this)">Copy Command</button>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:0.8rem;color:var(--muted)">
+        Dashboard will open at <strong style="color:var(--text)" id="dashUrl">http://localhost:3000</strong> when install completes.
+      </div>
     </div>
   </div>
 </div>
@@ -749,6 +801,23 @@ function previewGoogleDocs(el) {
   } else {
     preview.style.display = 'none';
   }
+}
+
+function switchPlatform(p, tab) {
+  ['macos','windows','linux'].forEach(id => {
+    document.getElementById('install-' + id).style.display = id === p ? '' : 'none';
+  });
+  document.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+}
+
+function copyCmd(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Command'; btn.classList.remove('copied'); }, 2500);
+  });
 }
 
 function previewVaultPath(el) {
@@ -897,7 +966,25 @@ async function generatePackage() {
       `Also included: <code>START HERE.txt</code> with full instructions`,
     ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px 16px;font-size:0.87rem;color:var(--text);line-height:1.6">${f}</li>`).join('');
     document.getElementById('dashUrl').textContent = `http://localhost:${cfg.dashPort}`;
-    document.getElementById('ghCmd').textContent = `git remote add origin https://github.com/${cfg.githubUser}/${cfg.githubRepo}.git && git push -u origin main`;
+
+    // Build one-liner commands — unzip then run setup
+    const zipName = `omniclaw-deploy-${cfg.companyName}.zip`;
+    const dir = `omniclaw-${cfg.companyName}`;
+    document.getElementById('cmd-macos').textContent =
+      `cd ~/Downloads && unzip -o "${zipName}" -d "${dir}" && cd "${dir}" && chmod +x setup.sh && ./setup.sh`;
+    document.getElementById('cmd-linux').textContent =
+      `cd ~/Downloads && unzip -o "${zipName}" -d "${dir}" && cd "${dir}" && chmod +x setup.sh && ./setup.sh`;
+    document.getElementById('cmd-windows').textContent =
+      `cd ~\\Downloads; Expand-Archive "${zipName}" -DestinationPath "${dir}" -Force; cd "${dir}"; .\\\"Install OmniClaw.ps1\"`;
+
+    // Auto-select the tab matching chosen OS
+    const osTabMap = { macos: 0, linux: 2, windows: 1 };
+    const tabs = document.querySelectorAll('.platform-tab');
+    const osIdx = osTabMap[cfg.hostOS] ?? 0;
+    tabs.forEach((t,i) => { t.classList.toggle('active', i === osIdx); });
+    ['macos','windows','linux'].forEach((p,i) => {
+      document.getElementById('install-' + p).style.display = i === osIdx ? '' : 'none';
+    });
   } catch(e) {
     btn.textContent = 'Generate Deploy Package'; btn.disabled = false;
     alert('Error generating ZIP: ' + e.message);
