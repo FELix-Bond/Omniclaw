@@ -1996,7 +1996,7 @@ function soulMd(c) {
 function orgChartJson(c) {
   // All agents share the full skill pool — no skill is locked to one agent
   const sharedSkillPool = [
-    { name: 'opencli-rs',       desc: 'Browser automation — Chrome, Gmail, Discord, WhatsApp, Telegram via Rust CLI' },
+    { name: 'opencli-rs',       desc: '55+ platform CLI — Twitter/X (24 cmds), Reddit (15), Instagram (14), TikTok (15), Facebook (10), Discord, LinkedIn, YouTube, Notion, Bloomberg, Google News, StackOverflow, HackerNews, ChatGPT, Cursor and more. 3 modes: public API (no browser), Chrome-based, and desktop app control. github.com/nashsu/opencli-rs-skill' },
     { name: 'firecrawl-intel',  desc: 'Web scraping, competitor monitoring, content extraction' },
     { name: 'gmail-send',       desc: 'Send emails as company — outreach, invoices, contracts, reports' },
     { name: 'google-drive',     desc: 'Create folders, upload/download files, share documents' },
@@ -2045,52 +2045,67 @@ function orgChartJson(c) {
 function skillsList() {
   return `# OmniClaw — Shared Skill Pool
 # All agents have access to ALL skills. Primary skills per agent are defaults, not limits.
-# Format: slug | description | priority | install_command
+# Source: https://github.com/nashsu/opencli-rs-skill
 
 # =============================================================================
 # CORE RUNTIME — Install first
 # =============================================================================
-opencli-rs              | Browser automation (Chrome, Gmail, Discord, WhatsApp, Telegram) | CRITICAL | cargo install opencli-rs
+opencli-rs              | 55+ platform CLI — Twitter, Reddit, LinkedIn, Discord, Instagram, TikTok, Facebook, YouTube, Notion, ChatGPT, Cursor, and more | CRITICAL | cargo install opencli-rs
 openclaw/self-improvement | Agent self-improvement loop | CRITICAL | skillsmp install openclaw/self-improvement
 mcp-server-builder      | Build and run MCP servers for skill extension | CRITICAL | skillsmp install mcp-server-builder
 
 # =============================================================================
-# COMMUNICATION SKILLS
+# OPENCLI-RS PLATFORM COVERAGE (55+ platforms, 3 modes)
 # =============================================================================
-telegram-notifier       | Send structured reports to Telegram | HIGH | skillsmp install telegram-notifier
-gmail-dispatch          | Send/draft emails via Gmail API | HIGH | skillsmp install bcastelino/ai-product
-slack-poster            | Post updates to Slack channels | HIGH | skillsmp install slack-poster
-discord-bridge          | Post to Discord channels and DMs | MEDIUM | skillsmp install discord-bridge
+# --- PUBLIC API (no browser required) ---
+opencli:hackernews      | top, new, best, ask, show, jobs, search, user | HIGH
+opencli:google          | news, search, suggest, trends | HIGH
+opencli:stackoverflow   | hot, search, bounties, unanswered | HIGH
+opencli:bloomberg       | main, markets, economics, tech, politics (10+ cmds) | HIGH
+opencli:wikipedia       | search, summary, random, trending | MEDIUM
+opencli:arxiv           | search, paper | MEDIUM
+opencli:devto           | top, tag, user | MEDIUM
+opencli:bbc             | news | MEDIUM
+opencli:v2ex            | hot, latest, topic, node, user, daily (11+ cmds) | LOW
+
+# --- BROWSER-BASED (require Chrome + extension) ---
+opencli:twitter         | trending, bookmarks, profile, search, timeline, post, reply, like, follow, article (24+ cmds) | HIGH
+opencli:reddit          | hot, frontpage, popular, search, subreddit, upvote, save, comment (15+ cmds) | HIGH
+opencli:youtube         | search, video, transcript | HIGH
+opencli:linkedin        | search | HIGH
+opencli:instagram       | explore, profile, search, follow, like, comment (14+ cmds) | HIGH
+opencli:tiktok          | explore, search, profile, follow, like, comment (15+ cmds) | MEDIUM
+opencli:facebook        | feed, profile, search, friends, groups, events (10+ cmds) | MEDIUM
+opencli:medium          | feed, search, user | MEDIUM
+opencli:substack        | feed, search, publication | MEDIUM
+opencli:yahoo-finance   | quote | HIGH
+
+# --- DESKTOP APP (require app running locally) ---
+opencli:discord         | status, send, read, channels, servers, search, members | HIGH
+opencli:notion          | status, search, read, new, write, sidebar, favorites, export | HIGH
+opencli:chatgpt         | status, new, send, read, ask | MEDIUM
+opencli:cursor          | status, send, read, new, dump, composer, model, ask (12+ cmds) | HIGH
 
 # =============================================================================
-# DOCUMENT & DATA SKILLS
+# DIRECT API SKILLS (more reliable for production use)
 # =============================================================================
+gmail-dispatch          | Send/draft emails via Gmail SMTP | HIGH | skillsmp install bcastelino/ai-product
 google-docs-writer      | Create and edit Google Docs | HIGH | skillsmp install bcastelino/ai-product
 google-sheets-logger    | Read/write Google Sheets data | HIGH | skillsmp install bcastelino/ai-product
 google-drive-manager    | Upload/download/organise Drive files | HIGH | skillsmp install bcastelino/ai-product
 google-calendar-ops     | Create events, check availability | MEDIUM | skillsmp install bcastelino/ai-product
-notion-writer           | Create Notion pages and update databases | HIGH | skillsmp install notion-writer
+slack-poster            | Post updates to Slack channels | HIGH | skillsmp install slack-poster
+telegram-notifier       | Send structured reports to Telegram | HIGH | skillsmp install telegram-notifier
+notion-api              | Create Notion pages and update databases via API | HIGH | skillsmp install notion-writer
 supabase-query          | Query and mutate Supabase tables | HIGH | skillsmp install supabase-query
-
-# =============================================================================
-# RESEARCH & INTELLIGENCE SKILLS
-# =============================================================================
+hubspot-crm             | Create contacts, log deals, track pipeline | HIGH | skillsmp install hubspot-crm
+stripe-reader           | Read revenue, customers, subscriptions | HIGH | skillsmp install stripe-reader
+github-integration      | Create repos, push code, manage issues, trigger CI | HIGH | skillsmp install github-integration
 firecrawl-intel         | Web scraping, competitor monitoring, content extraction | HIGH | skillsmp install firecrawl-intel
 perplexity-search       | Live AI-powered web research | HIGH | skillsmp install perplexity-search
 news-monitor            | Industry news monitoring and keyword alerts | MEDIUM | skillsmp install news-monitor
-diegosouzapw/ai-engineer | RAG pipelines and agent architecture | HIGH | skillsmp install diegosouzapw/ai-engineer
-
-# =============================================================================
-# CRM & FINANCE SKILLS
-# =============================================================================
-hubspot-crm             | Create contacts, log deals, track pipeline | HIGH | skillsmp install hubspot-crm
-stripe-reader           | Read revenue, customers, subscriptions | HIGH | skillsmp install stripe-reader
-
-# =============================================================================
-# DEV & OPERATIONS SKILLS
-# =============================================================================
-github-integration      | Create repos, push code, manage issues, trigger CI | HIGH | skillsmp install github-integration
 superpowers-core        | 400+ agent capabilities via SkillsMP marketplace | HIGH | skillsmp install superpowers-core
+diegosouzapw/ai-engineer | RAG pipelines and agent architecture | HIGH | skillsmp install diegosouzapw/ai-engineer
 `;
 }
 
