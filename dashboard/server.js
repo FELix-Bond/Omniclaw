@@ -264,11 +264,14 @@ Respond concisely and decisively as a CEO would. For complex decisions, briefly 
 }
 
 async function callAI(messages) {
-  const chain = [
-    process.env.MODEL_CHAIN_1,
-    process.env.MODEL_CHAIN_2,
-    process.env.MODEL_CHAIN_3,
-  ].filter(Boolean);
+  // Build chain from MODEL_CHAIN vars, then auto-detect any configured keys as fallback
+  const chainVars = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
+  const autoFallbacks = [];
+  if (!chainVars.some(c => c.startsWith('anthropic')) && process.env.ANTHROPIC_API_KEY) autoFallbacks.push('anthropic::claude-haiku-4-5-20251001');
+  if (!chainVars.some(c => c.startsWith('groq'))      && process.env.GROQ_API_KEY)      autoFallbacks.push('groq::llama-3.3-70b-versatile');
+  if (!chainVars.some(c => c.startsWith('gemini'))    && process.env.GOOGLE_AI_API_KEY) autoFallbacks.push('gemini::gemini-1.5-flash');
+  if (!chainVars.some(c => c.startsWith('openrouter'))&& process.env.OPENROUTER_API_KEY)autoFallbacks.push('openrouter::meta-llama/llama-3.1-8b-instruct:free');
+  const chain = [...chainVars, ...autoFallbacks];
 
   for (const slot of chain) {
     const [provider, model] = (slot || '').split('::');
