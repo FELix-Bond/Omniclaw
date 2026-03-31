@@ -623,7 +623,26 @@ fi
 # [5/7] DASHBOARD DEPENDENCIES
 # =============================================================================
 echo -e "\n${BLUE}[6/8] Installing dashboard...${NC}"
-cd dashboard && npm install --silent && cd ..
+mkdir -p dashboard/public
+
+# Ensure critical dashboard files exist — curl from repo if missing
+RAW="https://raw.githubusercontent.com/FELix-Bond/Omniclaw/main"
+for f in dashboard/server.js dashboard/package.json; do
+  if [ ! -f "$SCRIPT_DIR/$f" ]; then
+    echo -e "  ${YELLOW}⚠ $f missing — fetching from repo...${NC}"
+    curl -fsSL "$RAW/$f" -o "$SCRIPT_DIR/$f" 2>/dev/null \
+      && echo -e "  ${GREEN}✓ $f fetched${NC}" \
+      || echo -e "  ${RED}✗ Could not fetch $f${NC}"
+  fi
+done
+if [ ! -f "$SCRIPT_DIR/dashboard/public/index.html" ]; then
+  echo -e "  ${YELLOW}⚠ dashboard/public/index.html missing — fetching...${NC}"
+  curl -fsSL "$RAW/dashboard/public/index.html" -o "$SCRIPT_DIR/dashboard/public/index.html" 2>/dev/null \
+    && echo -e "  ${GREEN}✓ index.html fetched${NC}" \
+    || echo -e "  ${RED}✗ Could not fetch index.html${NC}"
+fi
+
+cd "$SCRIPT_DIR/dashboard" && npm install --silent && cd "$SCRIPT_DIR"
 echo -e "  ${GREEN}✓ Dashboard ready${NC}"
 
 # =============================================================================

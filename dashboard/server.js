@@ -247,6 +247,162 @@ io.on('connection', (socket) => {
 });
 
 // =============================================================================
+// CHAT — routes messages through CEO agent via configured AI provider
+// =============================================================================
+const axios = require('axios');
+
+const chatHistory = [];
+
+function getSystemPrompt() {
+  const ceo = state.agents['CEO'];
+  const profile = readAgentProfile('CEO') || '';
+  return `You are the CEO AI of ${state.company}, an autonomous executive agent.
+Your role: ${ceo?.persona || 'The Operator — final decision-maker'}.
+Company: ${state.company} | Owner: ${state.owner}
+${profile ? '\nYour full persona:\n' + profile.slice(0, 1500) : ''}
+Respond concisely and decisively as a CEO would. For complex decisions, briefly note which C-Suite agents you would consult.`;
+}
+
+async function callAI(messages) {
+  const chain = [
+    process.env.MODEL_CHAIN_1,
+    process.env.MODEL_CHAIN_2,
+    process.env.MODEL_CHAIN_3,
+  ].filter(Boolean);
+
+  for (const slot of chain) {
+    const [provider, model] = (slot || '').split('::');
+    try {
+      if (provider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
+        const r = await axios.post('https://api.anthropic.com/v1/messages', {
+          model: model || 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: getSystemPrompt(),
+          messages,
+        }, { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 30000 });
+        return r.data.content[0].text;
+      }
+      if (provider === 'groq' && process.env.GROQ_API_KEY) {
+        const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+          model: model || 'llama-3.1-70b-versatile',
+          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+          max_tokens: 1024,
+        }, { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 30000 });
+        return r.data.choices[0].message.content;
+      }
+      if (provider === 'gemini' && process.env.GOOGLE_AI_API_KEY) {
+        const r = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
+          { contents: [{ parts: [{ text: getSystemPrompt() + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
+          { timeout: 30000 }
+        );
+        return r.data.candidates[0].content.parts[0].text;
+      }
+      if (provider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
+        const r = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+          model: model || 'meta-llama/llama-3.1-405b',
+          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+        }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }, timeout: 30000 });
+        return r.data.choices[0].message.content;
+      }
+      if (provider === 'ollama') {
+        const r = await axios.post('http://localhost:11434/api/chat', {
+          model: model || 'llama3.1', stream: false,
+          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+        }, { timeout: 60000 });
+        return r.data.message.content;
+      }
+    } catch (e) {
+      console.log(`[CHAT] ${provider} failed: ${e.message} — trying next`);
+    }
+  }
+  return 'No AI provider is configured or responding. Add an API key to your .env file (ANTHROPIC_API_KEY, GROQ_API_KEY, or GOOGLE_AI_API_KEY).';
+}
+
+app.post('/api/chat', async (req, res) => {
+  const { message, source } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+
+  chatHistory.push({ role: 'user', content: message, source: source || 'dashboard', timestamp: new Date().toISOString() });
+  io.emit('chat:message', { role: 'user', content: message, source: source || 'dashboard', timestamp: new Date().toISOString() });
+
+  try {
+    const msgs = chatHistory.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.content }));
+    const reply = await callAI(msgs);
+    const response = { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() };
+    chatHistory.push(response);
+    if (chatHistory.length > 200) chatHistory.splice(0, 50);
+
+    io.emit('chat:message', response);
+    res.json(response);
+
+    // Log as agent activity
+    if (state.agents['CEO']) {
+      state.agents['CEO'].lastActive = new Date().toISOString();
+      state.agents['CEO'].currentTask = 'Responding to query';
+      io.emit('agents:update', Object.values(state.agents));
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/chat/history', (req, res) => {
+  res.json(chatHistory.slice(-50));
+});
+
+// =============================================================================
+// TELEGRAM — long-poll bot, relay messages through CEO agent
+// =============================================================================
+let tgOffset = 0;
+let tgEnabled = false;
+
+async function sendTelegram(chatId, text) {
+  if (!process.env.TG_TOKEN) return;
+  try {
+    await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, {
+      chat_id: chatId, text, parse_mode: 'Markdown',
+    }, { timeout: 10000 });
+  } catch (e) { console.log('[TG] Send failed:', e.message); }
+}
+
+async function pollTelegram() {
+  if (!process.env.TG_TOKEN) return;
+  try {
+    const r = await axios.get(`https://api.telegram.org/bot${process.env.TG_TOKEN}/getUpdates`, {
+      params: { offset: tgOffset, timeout: 20, allowed_updates: ['message'] },
+      timeout: 25000,
+    });
+    const updates = r.data.result || [];
+    for (const update of updates) {
+      tgOffset = update.update_id + 1;
+      const msg = update.message;
+      if (!msg?.text) continue;
+      const chatId = msg.chat.id;
+      const text = msg.text;
+      const from = msg.from?.first_name || 'User';
+      console.log(`[TG] Message from ${from}: ${text}`);
+      io.emit('chat:message', { role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
+
+      // Route through CEO
+      try {
+        const msgs = [{ role: 'user', content: text }];
+        const reply = await callAI(msgs);
+        await sendTelegram(chatId, `*CEO AI:* ${reply}`);
+        io.emit('chat:message', { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
+        chatHistory.push({ role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
+        chatHistory.push({ role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
+      } catch (e) {
+        await sendTelegram(chatId, 'Sorry, I encountered an error processing your message.');
+      }
+    }
+  } catch (e) {
+    if (!e.message.includes('timeout')) console.log('[TG] Poll error:', e.message);
+  }
+  setTimeout(pollTelegram, 1000);
+}
+
+// =============================================================================
 // INIT & START
 // =============================================================================
 loadOrgChart();
@@ -254,8 +410,20 @@ loadDecisions();
 
 server.listen(PORT, () => {
   console.log(`\n🦾 OmniClaw Dashboard`);
-  console.log(`   Company: ${state.company}`);
-  console.log(`   Port:    http://localhost:${PORT}`);
-  console.log(`   Agents:  ${Object.keys(state.agents).length} active`);
-  console.log(`   Heartbeat: ${state.heartbeat}\n`);
+  console.log(`   Company:   ${state.company}`);
+  console.log(`   Port:      http://localhost:${PORT}`);
+  console.log(`   Agents:    ${Object.keys(state.agents).length} active`);
+  console.log(`   Heartbeat: ${state.heartbeat}`);
+
+  // Start Telegram polling if token is configured
+  if (process.env.TG_TOKEN) {
+    pollTelegram();
+    console.log(`   Telegram:  Bot active — polling for messages`);
+  } else {
+    console.log(`   Telegram:  Not configured (add TG_TOKEN to .env)`);
+  }
+
+  // Detect which AI provider is active
+  const chain = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
+  console.log(`   AI Chain:  ${chain.join(' → ') || 'Not configured'}\n`);
 });

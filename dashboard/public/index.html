@@ -122,6 +122,22 @@
 
   .section-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 14px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+
+  /* CHAT */
+  .chat-wrap { display: flex; flex-direction: column; height: calc(100vh - 120px); }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; }
+  .chat-bubble { max-width: 80%; padding: 10px 14px; border-radius: 10px; font-size: 0.88rem; line-height: 1.6; }
+  .chat-bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+  .chat-bubble.assistant { align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .chat-bubble .bubble-meta { font-size: 0.68rem; opacity: 0.6; margin-top: 4px; }
+  .chat-input-row { display: flex; gap: 10px; }
+  .chat-input-row input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 11px 14px; font-size: 0.9rem; font-family: inherit; }
+  .chat-input-row input:focus { outline: none; border-color: var(--accent); }
+  .chat-send { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 11px 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  .chat-empty { color: var(--muted); font-size: 0.85rem; text-align: center; margin: auto; }
+  .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 0.85rem; color: var(--muted); text-decoration: none; transition: all 0.15s; border-left: 3px solid transparent; }
+  .nav-link:hover { color: var(--text); background: var(--surface2); }
 </style>
 </head>
 <body>
@@ -139,6 +155,8 @@
     <div class="nav-item" onclick="showPanel('github')"><span class="nav-icon">🐙</span> GitHub</div>
     <div class="nav-item" onclick="showPanel('heartbeat')"><span class="nav-icon">💓</span> Heartbeat</div>
     <div class="nav-item" onclick="showPanel('memory')"><span class="nav-icon">🧠</span> Memory</div>
+    <div class="nav-item" onclick="showPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
+    <a class="nav-link" href="https://app.openclaw.ai" target="_blank"><span class="nav-icon">🔗</span> OpenClaw ↗</a>
   </nav>
   <div class="sidebar-footer">
     <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)">
@@ -300,6 +318,22 @@
       <div class="card">
         <div class="section-title">HEARTBEATS.md (last 20 lines)</div>
         <pre class="profile-md" id="heartbeatsMd">Loading...</pre>
+      </div>
+    </div>
+
+    <!-- CHAT PANEL -->
+    <div class="panel" id="panel-chat">
+      <div class="chat-wrap">
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-empty" id="chatEmpty">
+            💬 Send a message to talk to your CEO AI.<br>
+            <span style="font-size:0.78rem;opacity:0.6">Messages also appear here from Telegram.</span>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Ask your CEO AI anything..." onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
+        </div>
       </div>
     </div>
 
@@ -551,6 +585,68 @@ function timeAgo(ts) {
   if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
   return Math.floor(diff/86400) + 'd ago';
 }
+
+// =============================================================================
+// CHAT
+// =============================================================================
+function appendChatBubble(msg) {
+  const wrap = document.getElementById('chatMessages');
+  document.getElementById('chatEmpty')?.remove();
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${msg.role === 'user' ? 'user' : 'assistant'}`;
+  bubble.innerHTML = `<div>${escapeHtml(msg.content)}</div><div class="bubble-meta">${msg.source || (msg.role === 'user' ? 'You' : 'CEO AI')} · ${timeAgo(msg.timestamp)}</div>`;
+  wrap.appendChild(bubble);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const btn = document.getElementById('chatSendBtn');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  btn.disabled = true;
+  btn.textContent = '...';
+  appendChatBubble({ role: 'user', content: msg, timestamp: new Date().toISOString() });
+  try {
+    await fetch('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
+  } catch(e) {
+    appendChatBubble({ role: 'assistant', content: 'Error: ' + e.message, timestamp: new Date().toISOString() });
+  }
+  btn.disabled = false;
+  btn.textContent = 'Send';
+  input.focus();
+}
+
+socket.on('chat:message', (msg) => {
+  // Only append assistant replies here (user bubbles added immediately on send)
+  if (msg.role === 'assistant' || msg.source?.startsWith('Telegram')) {
+    appendChatBubble(msg);
+  }
+});
+
+// Load chat history on chat panel open
+async function loadChatHistory() {
+  try {
+    const r = await fetch('/api/chat/history');
+    const msgs = await r.json();
+    msgs.forEach(m => appendChatBubble(m));
+  } catch(e) {}
+}
+
+const _origShowPanel = showPanel;
+function showPanel(id) {
+  _origShowPanel(id);
+  if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
+}
+
+// Fix nav active state for chat
+document.querySelectorAll('.nav-item').forEach(n => {
+  const orig = n.getAttribute('onclick');
+  if (orig?.includes('chat')) n.classList.add('chat-nav');
+});
 
 // Init
 loadStatus();
