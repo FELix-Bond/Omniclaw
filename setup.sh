@@ -403,8 +403,17 @@ echo -e "  ${GREEN}NemoClaw sandbox is ACTIVE${NC}"
 # [4/8] C-SUITE AGENTS
 # =============================================================================
 echo -e "\n${BLUE}[4/8] Provisioning C-Suite agents...${NC}"
-chmod +x agents/create-csuite.sh
-bash agents/create-csuite.sh
+mkdir -p "$SCRIPT_DIR/agents/csuite"
+CSUITE_SCRIPT="$SCRIPT_DIR/agents/create-csuite.sh"
+if [ ! -f "$CSUITE_SCRIPT" ]; then
+  echo -e "  ${YELLOW}⚠ create-csuite.sh not found locally — downloading from GitHub...${NC}"
+  curl -fsSL "https://raw.githubusercontent.com/FELix-Bond/Omniclaw/main/agents/create-csuite.sh" -o "$CSUITE_SCRIPT" || {
+    echo -e "  ${RED}✗ Could not download create-csuite.sh — check internet connection${NC}"
+    exit 1
+  }
+fi
+chmod +x "$CSUITE_SCRIPT"
+bash "$CSUITE_SCRIPT"
 
 # =============================================================================
 # [5/8] SKILLS INSTALLATION
@@ -412,19 +421,23 @@ bash agents/create-csuite.sh
 echo -e "\n${BLUE}[5/8] Installing skills & dependencies...${NC}"
 
 # Superpowers
-if [ ! -d "skills/superpowers" ]; then
-  git clone https://github.com/obra/superpowers.git skills/superpowers --depth=1 --quiet && \
-  echo -e "  ${GREEN}✓ Superpowers${NC}" || echo -e "  ${YELLOW}⚠ Superpowers clone failed${NC}"
+if [ ! -d "$SCRIPT_DIR/skills/superpowers" ]; then
+  echo -e "  Cloning Superpowers..."
+  git clone https://github.com/obra/superpowers.git "$SCRIPT_DIR/skills/superpowers" --depth=1 --quiet 2>/dev/null && \
+    echo -e "  ${GREEN}✓ Superpowers${NC}" || \
+    echo -e "  ${YELLOW}⚠ Superpowers clone failed — skipping (non-fatal)${NC}"
 else
   echo -e "  ✓ Superpowers (cached)"
 fi
 
-# OpenCLI-rs (Rust)
+# OpenCLI-rs (Rust — optional)
 if command -v cargo >/dev/null 2>&1; then
-  if [ ! -d "skills/opencli-rs" ]; then
-    git clone https://github.com/nashsu/opencli-rs-skill.git skills/opencli-rs --depth=1 --quiet
-    cd skills/opencli-rs && cargo build --release --quiet && cd ../..
-    echo -e "  ${GREEN}✓ OpenCLI-rs compiled${NC}"
+  if [ ! -d "$SCRIPT_DIR/skills/opencli-rs" ]; then
+    echo -e "  Cloning OpenCLI-rs..."
+    git clone https://github.com/nashsu/opencli-rs-skill.git "$SCRIPT_DIR/skills/opencli-rs" --depth=1 --quiet 2>/dev/null && {
+      cd "$SCRIPT_DIR/skills/opencli-rs" && cargo build --release --quiet 2>/dev/null && cd "$SCRIPT_DIR"
+      echo -e "  ${GREEN}✓ OpenCLI-rs compiled${NC}"
+    } || echo -e "  ${YELLOW}⚠ OpenCLI-rs clone/build failed — skipping (non-fatal)${NC}"
   else
     echo -e "  ✓ OpenCLI-rs (cached)"
   fi
