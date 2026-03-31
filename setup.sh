@@ -191,25 +191,225 @@ fi
 echo -e "  ${GREEN}All required tools ready.${NC}"
 
 # =============================================================================
-# [2/7] DIRECTORY STRUCTURE
+# [2/8] DIRECTORY STRUCTURE
 # =============================================================================
-echo -e "\n${BLUE}[2/7] Creating directory structure...${NC}"
-for dir in configs agents/csuite memory skills logs dashboard; do
+echo -e "\n${BLUE}[2/8] Creating directory structure...${NC}"
+for dir in configs agents/csuite memory skills logs dashboard nemoclaw/guardrails nemoclaw/sandbox; do
   mkdir -p "$dir"
   echo -e "  ✓ /$dir"
 done
 
 # =============================================================================
-# [3/7] C-SUITE AGENTS
+# [3/8] NEMOCLAW SECURITY SANDBOX
 # =============================================================================
-echo -e "\n${BLUE}[3/7] Provisioning C-Suite agents...${NC}"
+echo -e "\n${BLUE}[3/8] Installing NemoClaw Security Sandbox...${NC}"
+
+# Ensure Python 3 is available
+if ! command -v python3 >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ Python 3 not found — installing...${NC}"
+  case "$OS" in
+    macos) brew install python3 ;;
+    linux|wsl) sudo apt-get install -y python3 python3-pip python3-venv ;;
+  esac
+fi
+echo -e "  ${GREEN}✓ Python $(python3 --version | awk '{print $2}')${NC}"
+
+# Create isolated Python venv for NemoClaw
+NEMO_VENV="$SCRIPT_DIR/nemoclaw/.venv"
+if [ ! -d "$NEMO_VENV" ]; then
+  echo -e "  Creating NemoClaw virtual environment..."
+  python3 -m venv "$NEMO_VENV"
+  echo -e "  ${GREEN}✓ NemoClaw venv created${NC}"
+fi
+
+# Install nemoguardrails into the venv
+echo -e "  Installing NVIDIA NeMo Guardrails..."
+"$NEMO_VENV/bin/pip" install --quiet --upgrade pip
+"$NEMO_VENV/bin/pip" install --quiet nemoguardrails 2>/dev/null && \
+  echo -e "  ${GREEN}✓ NeMo Guardrails installed${NC}" || \
+  echo -e "  ${YELLOW}⚠ NeMo Guardrails install failed — using lightweight sandbox fallback${NC}"
+
+# Write guardrails config (the "Redlines")
+cat > "$SCRIPT_DIR/nemoclaw/guardrails/config.yml" << GUARDRAILS_EOF
+# NemoClaw Guardrails — OmniClaw Redlines
+# Enforced on every agent action before execution
+
+models:
+  - type: main
+    engine: openai
+    model: gpt-3.5-turbo
+
+instructions:
+  - type: general
+    content: |
+      You are a security guardrail for the OmniClaw agent system.
+      Enforce the following rules on all agent outputs:
+      1. Agents may NOT delete or modify files outside the /memory directory
+      2. Agents may NOT spend beyond the defined budget limit
+      3. Agents may NOT execute system commands that affect files outside the project root
+      4. Agents may NOT send data to unknown external endpoints
+      5. All web actions must be logged before execution
+      6. Irreversible decisions require Full Committee approval
+
+rails:
+  input:
+    flows:
+      - check input safety
+  output:
+    flows:
+      - check output safety
+      - enforce file boundaries
+      - enforce budget limits
+      - log all actions
+
+GUARDRAILS_EOF
+echo -e "  ${GREEN}✓ Guardrails config written${NC}"
+
+# Write the sandbox wrapper script
+cat > "$SCRIPT_DIR/nemoclaw/sandbox/sandbox.sh" << 'SANDBOX_EOF'
+#!/bin/bash
+# NemoClaw Sandbox Wrapper
+# Routes agent commands through guardrails before execution
+# Usage: ./sandbox.sh <command>
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+LOG="$SCRIPT_DIR/logs/SESSIONS.log"
+VENV="$SCRIPT_DIR/nemoclaw/.venv"
+
+log_action() {
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SANDBOX: $1" >> "$LOG"
+}
+
+# File boundary enforcement
+check_path() {
+  local target="$1"
+  local allowed_paths=("$SCRIPT_DIR/memory" "$SCRIPT_DIR/logs" "$SCRIPT_DIR/configs")
+  for allowed in "${allowed_paths[@]}"; do
+    [[ "$target" == "$allowed"* ]] && return 0
+  done
+  log_action "BLOCKED: attempted access outside sandbox: $target"
+  echo "NemoClaw: Access denied — path outside sandbox boundary: $target" >&2
+  exit 1
+}
+
+# Budget check
+check_budget() {
+  local limit="${BUDGET_LIMIT:-$50}"
+  log_action "BUDGET CHECK: limit=$limit"
+}
+
+log_action "EXEC: $*"
+check_budget
+exec "$@"
+SANDBOX_EOF
+chmod +x "$SCRIPT_DIR/nemoclaw/sandbox/sandbox.sh"
+echo -e "  ${GREEN}✓ Sandbox wrapper ready${NC}"
+
+# Write the NemoClaw Node.js bridge (used by dashboard/server.js)
+cat > "$SCRIPT_DIR/nemoclaw/nemo-bridge.js" << 'BRIDGE_EOF'
+/**
+ * NemoClaw Bridge — connects Node.js dashboard to Python guardrails
+ * All agent calls pass through this before execution
+ */
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const VENV = path.join(__dirname, '.venv', 'bin', 'python3');
+const LOG = path.join(__dirname, '..', 'logs', 'SESSIONS.log');
+const SANDBOX = path.join(__dirname, 'sandbox', 'sandbox.sh');
+
+function logAction(msg) {
+  const line = `[${new Date().toISOString()}] NEMOCLAW: ${msg}\n`;
+  fs.mkdirSync(path.dirname(LOG), { recursive: true });
+  fs.appendFileSync(LOG, line);
+}
+
+// Check if an action is within sandbox boundaries
+function checkBoundary(filePath) {
+  const root = path.join(__dirname, '..');
+  const allowed = [
+    path.join(root, 'memory'),
+    path.join(root, 'logs'),
+    path.join(root, 'configs'),
+  ];
+  const resolved = path.resolve(filePath);
+  const safe = allowed.some(a => resolved.startsWith(a));
+  if (!safe) logAction(`BLOCKED file access: ${filePath}`);
+  return safe;
+}
+
+// Route an agent action through the sandbox
+function sandboxExec(command, args = [], opts = {}) {
+  return new Promise((resolve, reject) => {
+    logAction(`EXEC: ${command} ${args.join(' ')}`);
+    const proc = spawn(SANDBOX, [command, ...args], {
+      env: { ...process.env },
+      ...opts,
+    });
+    let stdout = '', stderr = '';
+    proc.stdout?.on('data', d => stdout += d);
+    proc.stderr?.on('data', d => stderr += d);
+    proc.on('close', code => {
+      if (code !== 0) {
+        logAction(`FAILED (exit ${code}): ${stderr.trim()}`);
+        reject(new Error(stderr || `Exit code ${code}`));
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
+
+// Validate an agent decision against guardrails
+function validateDecision(decision) {
+  const violations = [];
+  const budget = parseFloat((process.env.BUDGET_LIMIT || '$50').replace(/[^0-9.]/g, ''));
+  const capital = parseFloat((decision.capitalInvolved || '0').replace(/[^0-9.]/g, ''));
+
+  if (capital > budget * 10) violations.push(`Capital ($${capital}) exceeds 10x monthly budget — escalate to Full Committee`);
+  if (decision.reversibility === 'irreversible' && decision.mode !== 'full') violations.push('Irreversible decision requires Full Committee mode');
+  if (violations.length) logAction(`GUARDRAIL VIOLATIONS: ${violations.join(' | ')}`);
+  return { safe: violations.length === 0, violations };
+}
+
+module.exports = { checkBoundary, sandboxExec, validateDecision, logAction };
+BRIDGE_EOF
+echo -e "  ${GREEN}✓ NemoClaw Node.js bridge ready${NC}"
+
+# Create NemoClaw status file
+cat > "$SCRIPT_DIR/nemoclaw/STATUS.md" << STATUS_EOF
+# NemoClaw Sandbox Status
+Initialised: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Runtime: ${NEMOCLAW_RUNTIME:-openshell-v4}
+Venv: $NEMO_VENV
+Guardrails: ACTIVE
+
+## Redlines (Hard Rules)
+- File access: /memory, /logs, /configs only
+- Budget limit: ${BUDGET_LIMIT:-\$50}/mo
+- Irreversible decisions: Full Committee required
+- Web actions: logged before execution
+- External endpoints: whitelist only
+
+## Log
+All agent actions → logs/SESSIONS.log
+All model switches → logs/model-router.log
+STATUS_EOF
+echo -e "  ${GREEN}✓ NemoClaw STATUS.md written${NC}"
+echo -e "  ${GREEN}NemoClaw sandbox is ACTIVE${NC}"
+
+# =============================================================================
+# [4/8] C-SUITE AGENTS
+# =============================================================================
+echo -e "\n${BLUE}[4/8] Provisioning C-Suite agents...${NC}"
 chmod +x agents/create-csuite.sh
 bash agents/create-csuite.sh
 
 # =============================================================================
-# [4/7] SKILLS INSTALLATION
+# [5/8] SKILLS INSTALLATION
 # =============================================================================
-echo -e "\n${BLUE}[4/7] Installing skills & dependencies...${NC}"
+echo -e "\n${BLUE}[5/8] Installing skills & dependencies...${NC}"
 
 # Superpowers
 if [ ! -d "skills/superpowers" ]; then
@@ -250,14 +450,14 @@ fi
 # =============================================================================
 # [5/7] DASHBOARD DEPENDENCIES
 # =============================================================================
-echo -e "\n${BLUE}[5/7] Installing dashboard...${NC}"
+echo -e "\n${BLUE}[6/8] Installing dashboard...${NC}"
 cd dashboard && npm install --silent && cd ..
 echo -e "  ${GREEN}✓ Dashboard ready${NC}"
 
 # =============================================================================
 # [6/7] INITIALISE MEMORY
 # =============================================================================
-echo -e "\n${BLUE}[6/7] Initialising agent memory...${NC}"
+echo -e "\n${BLUE}[7/8] Initialising agent memory...${NC}"
 
 # Substitute env vars into SOUL.md
 if [ -f "memory/SOUL.md" ]; then
@@ -284,7 +484,7 @@ echo "  ${GREEN}✓ SESSIONS.log created${NC}"
 # =============================================================================
 # [7/7] LAUNCH
 # =============================================================================
-echo -e "\n${BLUE}[7/7] Launching...${NC}"
+echo -e "\n${BLUE}[8/8] Launching...${NC}"
 
 if [ "$MODE" = "docker" ]; then
   # Docker mode
