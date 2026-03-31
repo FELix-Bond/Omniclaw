@@ -646,7 +646,7 @@ if [ -f "configs/init-company.yaml" ]; then
   echo -e "  ${GREEN}✓ init-company.resolved.yaml generated${NC}"
 fi
 
-echo "" > logs/SESSIONS.log
+mkdir -p logs && echo "" > logs/SESSIONS.log
 echo "  ${GREEN}✓ SESSIONS.log created${NC}"
 
 # --- Obsidian Vault Verification ---
