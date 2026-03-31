@@ -1120,26 +1120,51 @@ if command -v gh >/dev/null 2>&1; then
   export GITHUB_TOKEN=\$(gh auth token 2>/dev/null || true)
 fi
 
-# Never let git block waiting for a password
-export GIT_TERMINAL_PROMPT=0
-
 # =============================================================================
 # STEP 3 — Clone OmniClaw repo and run the real setup.sh
 # =============================================================================
 echo -e "\\n\${BLUE}[3/3] Fetching latest OmniClaw and launching setup...\${NC}"
+
+clone_failed() {
+  echo -e "  \${RED}✗ Clone failed.\${NC}"
+  echo -e "  Error: \$1"
+  echo -e "  Check your internet connection and try again."
+  exit 1
+}
 
 if [ -d ".git" ]; then
   echo -e "  Repo already present — pulling latest..."
   git pull origin main --quiet 2>/dev/null || true
 else
   echo -e "  Cloning OmniClaw bootstrap repo..."
-  git clone --depth=1 --quiet \\
-    --config http.connectTimeout=20 \\
-    "\$OMNICLAW_REPO" . 2>/dev/null || {
-    echo -e "  \${RED}✗ Clone failed. Check your internet connection or GitHub login.\${NC}"
-    echo -e "  Try running: gh auth login"
-    exit 1
-  }
+
+  # Strategy 1: gh repo clone (uses gh auth context natively — most reliable)
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    gh repo clone FELix-Bond/Omniclaw . -- --depth=1 --quiet 2>/tmp/clone_err \
+      && echo -e "  \${GREEN}✓ Cloned via gh\${NC}" \
+      || {
+        # Strategy 2: plain HTTPS with token embedded in URL (public repo fallback)
+        TOKEN=\$(gh auth token 2>/dev/null || true)
+        if [ -n "\$TOKEN" ]; then
+          git clone --depth=1 --quiet \
+            "https://\${TOKEN}@github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
+            && echo -e "  \${GREEN}✓ Cloned via HTTPS+token\${NC}" \
+            || clone_failed "\$(cat /tmp/clone_err)"
+        else
+          # Strategy 3: plain public HTTPS — no auth needed for public repos
+          git clone --depth=1 --quiet \
+            "https://github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
+            && echo -e "  \${GREEN}✓ Cloned via public HTTPS\${NC}" \
+            || clone_failed "\$(cat /tmp/clone_err)"
+        fi
+      }
+  else
+    # gh not available — plain public HTTPS
+    git clone --depth=1 --quiet \
+      "https://github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
+      && echo -e "  \${GREEN}✓ Cloned via public HTTPS\${NC}" \
+      || clone_failed "\$(cat /tmp/clone_err)"
+  fi
 fi
 
 # Restore our pre-filled .env (clone may have overwritten it with the example)
