@@ -600,17 +600,21 @@ else
   echo -e "  ${YELLOW}⚠ Rust not available — OpenCLI-rs skipped${NC}"
 fi
 
-# SkillsMP CLI
-npm install -g @skillsmp/cli --silent 2>/dev/null && echo -e "  ${GREEN}✓ SkillsMP CLI${NC}" || echo -e "  ${YELLOW}⚠ SkillsMP CLI (non-fatal)${NC}"
+# SkillsMP CLI (non-fatal — platform may not be available yet)
+npm install -g @skillsmp/cli --silent 2>/dev/null \
+  && echo -e "  ${GREEN}✓ SkillsMP CLI${NC}" \
+  || echo -e "  ${YELLOW}⚠ SkillsMP CLI unavailable — skipping (non-fatal)${NC}"
 
-# Read SKILLS_TO_INSTALL.txt and install critical/high priority
-if [ -f "skills/SKILLS_TO_INSTALL.txt" ]; then
+# Skills from SKILLS_TO_INSTALL.txt — all non-fatal, errors suppressed
+if [ -f "skills/SKILLS_TO_INSTALL.txt" ] && command -v npx >/dev/null 2>&1; then
   while IFS='|' read -r slug desc priority rest; do
     slug=$(echo "$slug" | tr -d ' ')
     priority=$(echo "$priority" | tr -d ' ')
     [[ "$slug" =~ ^#.*$ || -z "$slug" ]] && continue
     if [[ "$priority" == "CRITICAL" || "$priority" == "HIGH" ]]; then
-      npx skills add "$slug" --silent 2>/dev/null && echo -e "  ${GREEN}✓ skill: $slug${NC}" || true
+      npx skills add "$slug" --silent 2>/dev/null \
+        && echo -e "  ${GREEN}✓ skill: $slug${NC}" \
+        || echo -e "  ${YELLOW}⚠ skill $slug unavailable — skipping${NC}"
     fi
   done < "skills/SKILLS_TO_INSTALL.txt"
 fi
