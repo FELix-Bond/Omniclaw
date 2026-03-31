@@ -63,7 +63,31 @@ elif [ -f ".env.example" ]; then
     3)
       read -rp "  Company Name [OmniGen_Systems]: " CN; CN="${CN:-OmniGen_Systems}"
       read -rp "  Your Name [Felix]: " OWN; OWN="${OWN:-Felix}"
-      read -rp "  Obsidian Vault Path: " VP
+      # Auto-detect existing Obsidian vault
+      echo -e "  ${BLUE}Scanning for existing Obsidian vaults...${NC}"
+      FOUND_VAULTS=()
+      for candidate in \
+        "$HOME/Documents"/*/.obsidian \
+        "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents"/*/.obsidian \
+        "$HOME/Obsidian"/*/.obsidian \
+        "$HOME/vault"/.obsidian \
+        "$HOME/Vault"/.obsidian; do
+        [ -d "$candidate" ] && FOUND_VAULTS+=("${candidate%/.obsidian}")
+      done
+      if [ ${#FOUND_VAULTS[@]} -gt 0 ]; then
+        echo -e "  Found vaults:"
+        for i in "${!FOUND_VAULTS[@]}"; do
+          echo -e "    $((i+1)). ${FOUND_VAULTS[$i]}"
+        done
+        read -rp "  Select vault number (or press Enter to type a path): " vnum
+        if [[ "$vnum" =~ ^[0-9]+$ ]] && [ "$vnum" -ge 1 ] && [ "$vnum" -le "${#FOUND_VAULTS[@]}" ]; then
+          VP="${FOUND_VAULTS[$((vnum-1))]}"
+        else
+          read -rp "  Vault path: " VP
+        fi
+      else
+        read -rp "  Obsidian Vault Path (e.g. ~/Documents/MyVault): " VP
+      fi
       read -rp "  Anthropic API Key: " ANT
       cat > .env << EOF
 COMPANY_NAME="${CN}"
@@ -92,7 +116,7 @@ DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
 # =============================================================================
 # KEYCHAIN — save keys from .env, fill gaps from Keychain
 # =============================================================================
-ALL_API_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN VOICEBOX_API_KEY SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
+ALL_API_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
 
 kc_get() {
   local key="$1"
@@ -254,6 +278,55 @@ else
 fi
 
 echo -e "  ${GREEN}All required tools ready.${NC}"
+
+# --- GitHub CLI (gh) — install and authenticate ---
+echo -e "\n${BLUE}Checking GitHub authentication...${NC}"
+
+# Install gh if missing
+if ! command -v gh >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ GitHub CLI (gh) not found — installing...${NC}"
+  case "$OS" in
+    macos) brew install gh ;;
+    linux|wsl) curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+      && sudo apt update -qq && sudo apt install gh -y -qq ;;
+  esac
+fi
+
+if command -v gh >/dev/null 2>&1; then
+  # Check if already authenticated
+  if gh auth status >/dev/null 2>&1; then
+    GH_USER=$(gh api user --jq .login 2>/dev/null || echo "unknown")
+    echo -e "  ${GREEN}✓ GitHub authenticated as: ${BOLD}${GH_USER}${NC}"
+    # Pull the token into env so git operations use it
+    if [ -z "$GITHUB_TOKEN" ]; then
+      export GITHUB_TOKEN=$(gh auth token 2>/dev/null || true)
+    fi
+    # Configure git to use gh as credential helper (no prompts, no timeouts)
+    git config --global credential.helper "$(which gh) auth git-credential" 2>/dev/null || true
+  else
+    echo -e "  ${YELLOW}⚠ Not logged into GitHub.${NC}"
+    echo -e "  ${BOLD}Action required:${NC} Please log in now.\n"
+    echo -e "  This enables:"
+    echo -e "    • Cloning dependencies (Superpowers, OpenCLI-rs)"
+    echo -e "    • Auto-pushing your OmniClaw repo"
+    echo -e "    • Dashboard GitHub integration\n"
+    gh auth login --web 2>/dev/null || gh auth login 2>/dev/null
+    if gh auth status >/dev/null 2>&1; then
+      GH_USER=$(gh api user --jq .login 2>/dev/null || echo "unknown")
+      echo -e "  ${GREEN}✓ GitHub authenticated as: ${BOLD}${GH_USER}${NC}"
+      export GITHUB_TOKEN=$(gh auth token 2>/dev/null || true)
+      git config --global credential.helper "$(which gh) auth git-credential" 2>/dev/null || true
+    else
+      echo -e "  ${YELLOW}⚠ GitHub login skipped — git clones will use HTTPS (may prompt or time out)${NC}"
+    fi
+  fi
+else
+  echo -e "  ${YELLOW}⚠ gh CLI unavailable — git operations will fall back to HTTPS${NC}"
+fi
+
+# Make all git operations fail fast instead of hanging (no interactive auth prompts)
+export GIT_TERMINAL_PROMPT=0
 
 # =============================================================================
 # [2/8] DIRECTORY STRUCTURE
@@ -488,7 +561,11 @@ echo -e "\n${BLUE}[5/8] Installing skills & dependencies...${NC}"
 # Superpowers
 if [ ! -d "$SCRIPT_DIR/skills/superpowers" ]; then
   echo -e "  Cloning Superpowers..."
-  git clone https://github.com/obra/superpowers.git "$SCRIPT_DIR/skills/superpowers" --depth=1 --quiet 2>/dev/null && \
+  git clone --depth=1 --quiet \
+    --config http.connectTimeout=15 \
+    --config http.lowSpeedLimit=0 \
+    --config http.lowSpeedTime=30 \
+    https://github.com/obra/superpowers.git "$SCRIPT_DIR/skills/superpowers" 2>/dev/null && \
     echo -e "  ${GREEN}✓ Superpowers${NC}" || \
     echo -e "  ${YELLOW}⚠ Superpowers clone failed — skipping (non-fatal)${NC}"
 else
@@ -502,7 +579,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 if command -v cargo >/dev/null 2>&1; then
   if [ ! -d "$SCRIPT_DIR/skills/opencli-rs" ]; then
     echo -e "  Cloning OpenCLI-rs..."
-    git clone https://github.com/nashsu/opencli-rs-skill.git "$SCRIPT_DIR/skills/opencli-rs" --depth=1 --quiet 2>/dev/null && {
+    git clone --depth=1 --quiet \
+      --config http.connectTimeout=15 \
+      https://github.com/nashsu/opencli-rs-skill.git "$SCRIPT_DIR/skills/opencli-rs" 2>/dev/null && {
       cd "$SCRIPT_DIR/skills/opencli-rs" && cargo build --release --quiet 2>/dev/null && cd "$SCRIPT_DIR"
       echo -e "  ${GREEN}✓ OpenCLI-rs compiled${NC}"
     } || echo -e "  ${YELLOW}⚠ OpenCLI-rs clone/build failed — skipping (non-fatal)${NC}"
@@ -561,6 +640,48 @@ fi
 
 echo "" > logs/SESSIONS.log
 echo "  ${GREEN}✓ SESSIONS.log created${NC}"
+
+# --- Obsidian Vault Verification ---
+echo -e "\n${BLUE}Obsidian Vault:${NC}"
+if [ -n "$VAULT_PATH" ] && [ -d "$VAULT_PATH" ]; then
+  NOTE_COUNT=$(find "$VAULT_PATH" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+  VAULT_NAME=$(basename "$VAULT_PATH")
+  echo -e "  ${GREEN}✓ Vault found: ${BOLD}${VAULT_NAME}${NC} (${NOTE_COUNT} notes)"
+  echo -e "  Path: ${VAULT_PATH}"
+  # Write a lightweight index into agent memory
+  {
+    echo "# Obsidian Vault Index"
+    echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo ""
+    echo "**Vault:** ${VAULT_NAME}"
+    echo "**Path:** ${VAULT_PATH}"
+    echo "**Notes:** ${NOTE_COUNT}"
+    echo ""
+    echo "## Top-level folders"
+    find "$VAULT_PATH" -maxdepth 1 -type d ! -name ".*" ! -name "$(basename "$VAULT_PATH")" \
+      -exec basename {} \; 2>/dev/null | sort | sed 's/^/- /'
+  } > memory/VAULT_INDEX.md
+  echo -e "  ${GREEN}✓ VAULT_INDEX.md written${NC}"
+elif [ -n "$VAULT_PATH" ]; then
+  echo -e "  ${YELLOW}⚠ Vault path set but not found: ${VAULT_PATH}${NC}"
+  echo -e "  ${YELLOW}  Check that the path is correct and the drive is mounted.${NC}"
+  # Auto-scan and offer alternatives
+  FOUND_VAULTS=()
+  for candidate in \
+    "$HOME/Documents"/*/.obsidian \
+    "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents"/*/.obsidian \
+    "$HOME/Obsidian"/*/.obsidian; do
+    [ -d "$candidate" ] && FOUND_VAULTS+=("${candidate%/.obsidian}")
+  done
+  if [ ${#FOUND_VAULTS[@]} -gt 0 ]; then
+    echo -e "  Found other vaults on this machine:"
+    for v in "${FOUND_VAULTS[@]}"; do echo -e "    • $v"; done
+    echo -e "  Update VAULT_PATH in .env to use one of the above."
+  fi
+else
+  echo -e "  ${YELLOW}⚠ VAULT_PATH not set — Obsidian integration disabled${NC}"
+  echo -e "  Set VAULT_PATH in .env to enable vault memory."
+fi
 
 # =============================================================================
 # [7/7] LAUNCH
