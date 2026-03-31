@@ -229,11 +229,18 @@ fi
 echo -e "  ${GREEN}✓ npm $(npm --version)${NC}"
 
 # --- Rust / Cargo (optional — for OpenCLI-rs) ---
+# Always ensure ~/.cargo/bin is on PATH (covers fresh installs and re-runs)
+export PATH="$HOME/.cargo/bin:$PATH"
 if ! command -v cargo >/dev/null 2>&1; then
   echo -e "  ${YELLOW}⚠ Rust not found — installing (needed for OpenCLI-rs)...${NC}"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --quiet
   source "$HOME/.cargo/env" 2>/dev/null || true
-  echo -e "  ${GREEN}✓ Rust installed${NC}"
+  export PATH="$HOME/.cargo/bin:$PATH"  # ensure PATH is updated in this shell
+  if command -v cargo >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓ Rust installed ($(rustc --version | awk '{print $2}'))${NC}"
+  else
+    echo -e "  ${YELLOW}⚠ Rust install may need a terminal restart — OpenCLI-rs will be skipped this run${NC}"
+  fi
 else
   echo -e "  ${GREEN}✓ Rust $(rustc --version | awk '{print $2}')${NC}"
 fi
@@ -489,6 +496,9 @@ else
 fi
 
 # OpenCLI-rs (Rust — optional)
+# Re-source cargo env in case it was just installed above
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env" 2>/dev/null || true
+export PATH="$HOME/.cargo/bin:$PATH"
 if command -v cargo >/dev/null 2>&1; then
   if [ ! -d "$SCRIPT_DIR/skills/opencli-rs" ]; then
     echo -e "  Cloning OpenCLI-rs..."
