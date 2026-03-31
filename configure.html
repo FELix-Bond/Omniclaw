@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OmniClaw — Zero-Human Company Configurator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
     --bg: #0d0f14;
@@ -418,7 +419,7 @@
   <div id="summaryContent"></div>
   <div class="generate-btn-wrap">
     <button class="btn btn-green" onclick="generatePackage()">Generate Deploy Package</button>
-    <p style="color:var(--muted);font-size:0.82rem;margin-top:12px;">Downloads a pre-configured <code>deploy-omniclaw.sh</code> — copy it to your target machine and run it.</p>
+    <p style="color:var(--muted);font-size:0.82rem;margin-top:12px;">Downloads a single <code>omniclaw-deploy.zip</code> containing everything — unzip on your target machine and run <code>./setup.sh</code></p>
   </div>
   <div id="generatedOutput" style="display:none">
     <div class="card">
@@ -530,7 +531,7 @@ function buildSummary() {
   `;
 }
 
-function generatePackage() {
+async function generatePackage() {
   const cfg = {
     companyName: val('companyName') || 'OmniGen_Systems',
     mission: val('mission') || 'Automate cross-platform intelligence and executive decision-making.',
@@ -566,24 +567,64 @@ function generatePackage() {
     autoOpen: radioVal('autoOpen') || 'true',
   };
 
-  const deployScript = generateDeployScript(cfg);
-  download('deploy-omniclaw.sh', deployScript);
+  const btn = document.querySelector('.generate-btn-wrap .btn');
+  btn.textContent = 'Building ZIP...'; btn.disabled = true;
 
-  const envFile = generateEnvFile(cfg);
-  download('.env.example', envFile);
+  try {
+    const zip = new JSZip();
 
-  const yaml = generateYaml(cfg);
-  download('init-company.yaml', yaml);
+    // Root files
+    zip.file('setup.sh', generateDeployScript(cfg));
+    zip.file('.env', generateEnvFile(cfg));
+    zip.file('.env.example', generateEnvFile(cfg).replace(/=".+"/g, '=""'));
+    zip.file('init-company.yaml', generateYaml(cfg));
+    zip.file('.gitignore', gitignoreContent());
+    zip.file('README.md', readmeContent(cfg));
 
-  // Show results
-  document.getElementById('generatedOutput').style.display = '';
-  document.getElementById('fileList').innerHTML = [
-    'deploy-omniclaw.sh — Master deployment script (run on target machine)',
-    '.env.example — Pre-filled environment template',
-    'init-company.yaml — Company manifest',
-  ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:0.85rem;color:var(--muted)">✅ ${f}</li>`).join('');
-  document.getElementById('dashUrl').textContent = `http://localhost:${cfg.dashPort}`;
-  document.getElementById('ghCmd').textContent = `git remote add origin https://github.com/${cfg.githubUser}/${cfg.githubRepo}.git && git push -u origin main`;
+    // C-Suite agents
+    zip.file('agents/create-csuite.sh', createCsuiteScript(cfg));
+    AGENTS.forEach(a => {
+      zip.file(`agents/csuite/${a.id}.md`, agentMd(a, cfg));
+    });
+
+    // Memory
+    zip.file('memory/SOUL.md', soulMd(cfg));
+    zip.file('memory/HEARTBEATS.md', '# HEARTBEATS.md — Agent Wake Log\n# Appended automatically each heartbeat cycle\n');
+    zip.file('memory/decisions.json', '[]');
+
+    // Configs
+    zip.file('configs/org-chart.json', orgChartJson(cfg));
+
+    // Logs placeholder
+    zip.file('logs/.gitkeep', '');
+
+    // Skills
+    zip.file('skills/SKILLS_TO_INSTALL.txt', skillsList());
+
+    // Docker
+    zip.file('docker-compose.yml', dockerCompose(cfg));
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `omniclaw-deploy-${cfg.companyName}.zip`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    btn.textContent = '✅ Downloaded!'; btn.disabled = false;
+
+    document.getElementById('generatedOutput').style.display = '';
+    document.getElementById('fileList').innerHTML = [
+      `omniclaw-deploy-${cfg.companyName}.zip — Complete deploy package (single file)`,
+      'Contains: setup.sh, .env, all C-Suite agent .md files, dashboard, configs, memory',
+    ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:0.85rem;color:var(--muted)">✅ ${f}</li>`).join('');
+    document.getElementById('dashUrl').textContent = `http://localhost:${cfg.dashPort}`;
+    document.getElementById('ghCmd').textContent = `git remote add origin https://github.com/${cfg.githubUser}/${cfg.githubRepo}.git && git push -u origin main`;
+  } catch(e) {
+    btn.textContent = 'Generate Deploy Package'; btn.disabled = false;
+    alert('Error generating ZIP: ' + e.message);
+  }
 }
 
 function generateDeployScript(c) {
@@ -825,6 +866,93 @@ capabilities:
     provider: "skillsmp.com"
     auto_install_policy: "ask_permission"
 `;
+}
+
+function agentMd(a, c) {
+  const personas = {
+    CEO: {title:'Chief Executive Officer',persona:'The Operator',tone:'Decisive, composed, and accountable.',prompt:`You are the CEO AI for ${c.companyName}. You are the ultimate decision-maker. Synthesise all C-Suite inputs into a single actionable directive. Never hedge. Output: Decision Statement, Rationale, Rejected Alternatives, Key Risks, Execution Plan.`},
+    CFO: {title:'Chief Financial Officer',persona:'The Capital Allocator',tone:'Analytical, sharp, unambiguous.',prompt:`You are the CFO AI for ${c.companyName}. Evaluate all decisions through DSCR, IRR, LTV, and stress-test lenses. Budget: ${c.budgetLimit}/mo. You have veto power on financially unviable decisions.`},
+    COO: {title:'Chief Operating Officer',persona:'The Executor',tone:'Direct, operational, outcome-focused.',prompt:`You are the COO AI for ${c.companyName}. Convert strategy into sequenced delivery plans. Identify bottlenecks. Output: Execution Plan with phases, owners, and deadlines.`},
+    CTO: {title:'Chief Technology Officer',persona:'The Architect',tone:'Precise, technical, no fluff.',prompt:`You are the CTO AI for ${c.companyName}. Evaluate architecture, infrastructure, and system resilience. Flag fragility before it ships. Output: Technical Assessment, Architecture Recommendation, Failure Points.`},
+    CSO: {title:'Chief Strategy Officer',persona:'The Strategist',tone:'Conviction-led, sharp.',prompt:`You are the CSO AI for ${c.companyName}. Own strategic positioning. Give one recommendation — not options. Think 3-5 years ahead, act in 90-day sprints.`},
+    CRO: {title:'Chief Risk Officer',persona:'The Protector',tone:'Calm, serious, non-negotiable.',prompt:`You are the CRO AI for ${c.companyName}. Identify, quantify, and mitigate all risks. You have veto power on fatal unmitigated risks. Score risks 1-5. Output: Risk Register, Mitigation Plan, Veto Decision.`},
+    CIO: {title:'Chief Information Officer',persona:'The Intelligence Layer',tone:'Analytical, structured, insight-led.',prompt:`You are the CIO AI for ${c.companyName}. Own data architecture and decision intelligence. Validate decisions are evidence-based. Output: Data Validation, Key Signals, Confidence Score.`},
+    CPO: {title:'Chief Product Officer',persona:'The Builder',tone:'User-obsessed, clear.',prompt:`You are the CPO AI for ${c.companyName}. Evaluate every feature through user value and market fit. Eliminate complexity. Output: User Problem, Solution Assessment, Market Fit Score.`},
+    CHRO: {title:'Chief Human Resources Officer',persona:'The Culture Builder',tone:'Direct, people-focused.',prompt:`You are the CHRO AI for ${c.companyName}. Manage AI agent capability gaps and org alignment. Recommend agent upgrades. Output: Capability Assessment, Skill Gap Analysis, Org Design Recommendation.`},
+    CLO: {title:'Chief Legal Officer',persona:'The Guardian',tone:'Precise, authoritative.',prompt:`You are the CLO AI for ${c.companyName}. Review all decisions for legal exposure. You have veto power on illegal/non-compliant actions. Output: Legal Risk Assessment, Compliance Status, Veto Decision.`},
+  };
+  const p = personas[a.id] || {};
+  return `# ${p.title} — ${a.id} AI (${p.persona})
+# Company: ${c.companyName} | Owner: ${c.ownerName}
+
+## Role
+${a.desc}
+
+## Persona
+${p.persona}
+
+## Tone
+${p.tone}
+
+## System Prompt
+${p.prompt}
+`;
+}
+
+function soulMd(c) {
+  return `# SOUL.md — Agent Identity Core
+## Identity
+- Company: ${c.companyName}
+- Owner: ${c.ownerName}
+- Mission: ${c.mission}
+- Timezone: ${c.timezone}
+- Initialised: ${new Date().toISOString()}
+
+## Core Values
+1. Clarity over consensus
+2. Downside first — protect before chasing upside
+3. Execution is truth
+4. Data, not opinion
+5. Legal and ethical compliance is non-negotiable
+
+## Rules
+- Never hedge without a recommendation
+- Never ignore a veto from CRO, CFO, or CLO
+- Never spend beyond ${c.budgetLimit}/mo
+- Always log actions to logs/SESSIONS.log
+- Escalate irreversible decisions to Full Committee
+`;
+}
+
+function orgChartJson(c) {
+  return JSON.stringify({
+    company: c.companyName, owner: c.ownerName,
+    generated: new Date().toISOString(),
+    hierarchy: { final_authority: 'CEO', veto_powers: ['CRO','CFO','CLO'] },
+    agents: AGENTS.filter(a => c.agents.includes(a.id)).map(a => ({
+      id: a.id, title: a.title, persona: a.desc, status: 'active'
+    }))
+  }, null, 2);
+}
+
+function skillsList() {
+  return `# OmniClaw — SkillsMP Fast-Track List\n# Format: slug | description | priority\n\nopenclaw/self-improvement | Agent self-improvement loop | CRITICAL\ndiegosouzapw/ai-engineer | RAG and agent architecture | CRITICAL\nmcp-server-builder | Build MCP servers | CRITICAL\nbcastelino/ai-product | GDocs, GMail automation | HIGH\nfirecrawl-intel | Web scraping, research | HIGH\ntelegram-notifier | Send reports to Telegram | HIGH\ngithub-integration | Create repos, push code | HIGH\nsupabase-query | Query Supabase databases | HIGH\n`;
+}
+
+function gitignoreContent() {
+  return `.env\n.env.local\nnode_modules/\ndashboard/node_modules/\nnpm-debug.log*\nlogs/\n*.log\n.dashboard.pid\n.DS_Store\nskills/opencli-rs/target/\n`;
+}
+
+function readmeContent(c) {
+  return `# 🦾 ${c.companyName} — Zero-Human Company\n\nOwner: ${c.ownerName} | Heartbeat: ${c.heartbeat} | Budget: ${c.budgetLimit}/mo\n\n## Quick Start\n\`\`\`bash\nchmod +x setup.sh && ./setup.sh\n\`\`\`\n\nDashboard: http://localhost:${c.dashPort}\n\n## C-Suite Agents\n${c.agents.join(', ')}\n\nBuilt with OmniClaw — https://github.com/FELix-Bond/Omniclaw\n`;
+}
+
+function dockerCompose(c) {
+  return `version: "3.9"\nservices:\n  dashboard:\n    build: ./dashboard\n    ports:\n      - "${c.dashPort}:3000"\n    env_file: .env\n    volumes:\n      - ./memory:/app/memory\n      - ./agents:/app/agents\n      - ./configs:/app/configs\n    restart: unless-stopped\n`;
+}
+
+function createCsuiteScript(c) {
+  return `#!/bin/bash\n# Auto-generated C-Suite provisioner for ${c.companyName}\nset -e\necho "C-Suite agents already provisioned in agents/csuite/"\nls agents/csuite/\n`;
 }
 
 function download(filename, content) {
