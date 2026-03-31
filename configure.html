@@ -879,11 +879,12 @@ const AGENTS = [
   { id: 'CPO', name: 'CPO AI', title: 'Chief Product Officer', desc: 'The Builder — product & UX', defaultVoice: 'jBpfuIE2acCO8z3wKNLl' },
   { id: 'CHRO', name: 'CHRO AI', title: 'Chief HR Officer', desc: 'The Culture Builder — talent & org', defaultVoice: 'EXAVITQu4vr4xnSDxMaL' },
   { id: 'CLO', name: 'CLO AI', title: 'Chief Legal Officer', desc: 'The Guardian — legal & compliance', defaultVoice: 'MF3mGyEYCl7XYWbV9V9L' },
+  { id: 'CMO', name: 'CMO AI', title: 'Chief Marketing Officer', desc: 'The Growth Engine — brand, content & audience', defaultVoice: 'EXAVITQu4vr4xnSDxMaL' },
 ];
 
 let currentStep = 0;
 const totalSteps = 7;
-const selectedAgents = new Set(['CEO', 'CFO', 'COO', 'CTO', 'CSO', 'CRO', 'CIO', 'CPO', 'CHRO', 'CLO']);
+const selectedAgents = new Set(['CEO', 'CFO', 'COO', 'CTO', 'CSO', 'CRO', 'CIO', 'CPO', 'CHRO', 'CLO', 'CMO']);
 
 function initAgentGrid() {
   const grid = document.getElementById('agentGrid');
@@ -2026,6 +2027,7 @@ function orgChartJson(c) {
     CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm'],
     CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs'],
     CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log'],
+    CMO:  ['opencli-rs','twitter','instagram','tiktok','linkedin','perplexity-search','firecrawl-intel','google-docs','notion-log','hubspot-crm'],
   };
 
   return JSON.stringify({

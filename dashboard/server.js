@@ -405,6 +405,7 @@ const AGENT_PERSONAS = {
   CPO:  { name: 'CPO', emoji: '🚀', role: 'Chief Product Officer', style: 'user-obsessed product builder' },
   CHRO: { name: 'CHRO', emoji: '🤝', role: 'Chief HR Officer', style: 'culture-focused people builder' },
   CLO:  { name: 'CLO', emoji: '⚖️', role: 'Chief Legal Officer', style: 'risk-averse legal guardian' },
+  CMO:  { name: 'CMO', emoji: '📣', role: 'Chief Marketing Officer', style: 'creative, data-driven growth marketer who builds audiences and converts them' },
 };
 
 // Intro messages — sent once on first run when Telegram is configured
@@ -419,7 +420,105 @@ const AGENT_INTROS = [
   (owner, co) => `🚀 *CPO online* — I own product at ${co}. What we build, who it's for, and whether it's actually good. Talk to me about the roadmap, ${owner}.`,
   (owner, co) => `🤝 *CHRO here* — People and culture at ${co}. Talent, team dynamics, how we work together. Here if you need to think through the human side, ${owner}.`,
   (owner, co) => `⚖️ *CLO signed in* — Legal guardian at ${co}. Contracts, compliance, anything that could get us in trouble. Run it by me before you commit, ${owner}.`,
+  (owner, co) => `📣 *CMO online* — I own growth and marketing at ${co}. Brand, content, audience, campaigns. Tell me what you're selling and I'll tell you how to make people want it, ${owner}.`,
 ];
+
+// =============================================================================
+// SKILL SYSTEM — shared pool across all C-Suite agents
+// =============================================================================
+
+const SKILL_MANIFEST = {
+  superpowers: [
+    { id: 'brainstorming',                 desc: 'Generate diverse ideas before narrowing — diverge then converge' },
+    { id: 'writing-plans',                 desc: 'Create step-by-step execution plans before acting' },
+    { id: 'executing-plans',               desc: 'Follow a written plan systematically, step by step' },
+    { id: 'dispatching-parallel-agents',   desc: 'Break work into parallel streams and synthesise results' },
+    { id: 'systematic-debugging',          desc: 'Diagnose problems with a structured elimination approach' },
+    { id: 'verification-before-completion',desc: 'Check outputs against the original goal before declaring done' },
+    { id: 'subagent-driven-development',   desc: 'Delegate subtasks to specialised sub-agents for high quality' },
+  ],
+  opencli_api: [
+    { id: 'google',        desc: 'Google Search — no browser needed' },
+    { id: 'bloomberg',     desc: 'Bloomberg financial news and data' },
+    { id: 'hackernews',    desc: 'Hacker News top stories and discussions' },
+    { id: 'stackoverflow', desc: 'Stack Overflow Q&A lookup' },
+    { id: 'wikipedia',     desc: 'Wikipedia article content' },
+    { id: 'arxiv',         desc: 'Academic papers and research' },
+    { id: 'bbc',           desc: 'BBC News headlines' },
+    { id: 'devto',         desc: 'Dev.to engineering articles' },
+    { id: 'yahoo-finance', desc: 'Yahoo Finance stock and market data' },
+  ],
+  opencli_browser: [
+    { id: 'twitter',   desc: 'Twitter/X — post, read, search, follow (24 skills)' },
+    { id: 'reddit',    desc: 'Reddit — browse, post, comment, moderate (15 skills)' },
+    { id: 'instagram', desc: 'Instagram — post, stories, DMs, analytics (14 skills)' },
+    { id: 'tiktok',    desc: 'TikTok — post, trending, analytics (15 skills)' },
+    { id: 'facebook',  desc: 'Facebook — posts, pages, groups (10 skills)' },
+    { id: 'linkedin',  desc: 'LinkedIn — posts, outreach, job listings' },
+    { id: 'youtube',   desc: 'YouTube — upload, comments, analytics' },
+    { id: 'medium',    desc: 'Medium — publish and read articles' },
+    { id: 'substack',  desc: 'Substack — publish newsletters' },
+  ],
+  opencli_desktop: [
+    { id: 'discord', desc: 'Discord — messages, channels, community management' },
+    { id: 'notion',  desc: 'Notion desktop — read and write pages' },
+    { id: 'chatgpt', desc: 'ChatGPT desktop — interact via UI' },
+    { id: 'cursor',  desc: 'Cursor IDE — code editing automation' },
+  ],
+  apis: [
+    { id: 'gmail',           desc: 'Send and read emails via Gmail SMTP' },
+    { id: 'google-drive',    desc: 'Upload, download, organise files in Drive' },
+    { id: 'google-docs',     desc: 'Create and edit Google Docs' },
+    { id: 'google-sheets',   desc: 'Read and write Google Sheets data' },
+    { id: 'google-calendar', desc: 'Create and manage Calendar events' },
+    { id: 'slack',           desc: 'Post messages to Slack channels' },
+    { id: 'notion-api',      desc: 'Read/write Notion databases via API' },
+    { id: 'hubspot',         desc: 'CRM — deals, contacts, pipeline' },
+    { id: 'stripe',          desc: 'Payments — charges, subscriptions, revenue' },
+    { id: 'firecrawl',       desc: 'Web scraping and content extraction' },
+    { id: 'perplexity',      desc: 'AI-powered web research and Q&A' },
+    { id: 'supabase',        desc: 'Database read/write and auth' },
+    { id: 'github',          desc: 'Repo management, issues, PRs' },
+  ],
+};
+
+// Per-agent primary skill focus (NOT restrictions — all agents access full pool)
+const AGENT_PRIMARY_SKILLS = {
+  CEO:  ['brainstorming', 'writing-plans', 'executing-plans', 'dispatching-parallel-agents', 'gmail', 'google-docs', 'slack'],
+  CFO:  ['yahoo-finance', 'bloomberg', 'stripe', 'google-sheets', 'hubspot', 'writing-plans', 'verification-before-completion'],
+  COO:  ['executing-plans', 'writing-plans', 'google-sheets', 'notion-api', 'slack', 'dispatching-parallel-agents'],
+  CTO:  ['github', 'stackoverflow', 'hackernews', 'arxiv', 'cursor', 'systematic-debugging', 'google-drive'],
+  CSO:  ['brainstorming', 'perplexity', 'firecrawl', 'bloomberg', 'bbc', 'arxiv', 'writing-plans'],
+  CMO:  ['twitter', 'instagram', 'tiktok', 'reddit', 'linkedin', 'youtube', 'medium', 'substack', 'firecrawl', 'perplexity', 'brainstorming', 'writing-plans'],
+  CRO:  ['systematic-debugging', 'verification-before-completion', 'bloomberg', 'hubspot', 'stripe', 'writing-plans'],
+  CIO:  ['google-sheets', 'supabase', 'perplexity', 'google', 'bbc', 'arxiv', 'dispatching-parallel-agents'],
+  CPO:  ['brainstorming', 'writing-plans', 'notion-api', 'github', 'google-docs', 'verification-before-completion'],
+  CHRO: ['linkedin', 'notion-api', 'google-docs', 'slack', 'gmail', 'writing-plans'],
+  CLO:  ['google', 'arxiv', 'notion-api', 'google-docs', 'gmail', 'verification-before-completion'],
+};
+
+function getSkillContextForAgent(agentId) {
+  const primary = AGENT_PRIMARY_SKILLS[agentId] || AGENT_PRIMARY_SKILLS['CEO'];
+  const allSkills = [
+    ...SKILL_MANIFEST.superpowers,
+    ...SKILL_MANIFEST.opencli_api,
+    ...SKILL_MANIFEST.opencli_browser,
+    ...SKILL_MANIFEST.opencli_desktop,
+    ...SKILL_MANIFEST.apis,
+  ];
+
+  const primaryList = primary.map(id => {
+    const skill = allSkills.find(s => s.id === id);
+    return skill ? `  • ${id} — ${skill.desc}` : `  • ${id}`;
+  }).join('\n');
+
+  return `
+AVAILABLE TOOLS & SKILLS (shared pool — use any that help):
+Primary skills for your role:
+${primaryList}
+
+When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.`;
+}
 
 async function sendTelegram(chatId, text) {
   if (!process.env.TG_TOKEN) return;
@@ -453,11 +552,13 @@ async function sendAgentIntros() {
 function getAgentSystemPrompt(agentId) {
   const persona = AGENT_PERSONAS[agentId] || AGENT_PERSONAS['CEO'];
   const profile = readAgentProfile(agentId) || '';
+  const skillContext = getSkillContextForAgent(agentId);
   return `You are the ${persona.name}, ${persona.role} of ${state.company}, talking with ${state.owner}.
 Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
 HONESTY: Never claim capabilities you lack. Never invent details. If you don't know, say so.
 Company: ${state.company} | Owner: ${state.owner}
-${profile ? profile.slice(0, 500) : ''}`;
+${profile ? profile.slice(0, 500) : ''}
+${skillContext}`;
 }
 
 async function pollTelegram() {
