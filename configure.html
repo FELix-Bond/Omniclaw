@@ -521,115 +521,175 @@
 <div class="section" id="step-4">
   <div class="section-header">
     <h2>Integrations & API Keys</h2>
-    <p>All keys are stored locally in your <code>.env</code> file — never committed to GitHub.</p>
+    <p>Build your full Day One suite. All keys stay in your local <code>.env</code> — never committed to GitHub. Everything is optional — skip what you don't have yet.</p>
   </div>
-  <div class="warning-box">These values are processed entirely in your browser. Nothing is sent to any server.</div>
+  <div class="warning-box">All values processed entirely in your browser. Nothing is sent to any server.</div>
 
+  <!-- AI Models -->
   <div class="card">
-    <div class="card-title">AI Model API Keys</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Only the providers you selected in your fallback chain are shown. 🟢 Free tier providers need a key but never charge you.</p>
-
-    <div class="field" id="field-ollama">
-      <label>Ollama <span class="badge-free">FREE — no key needed</span></label>
-      <div style="font-size:0.82rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px">
-        Runs locally — install with: <code>brew install ollama</code> then <code>ollama pull llama3.1</code><br>
-        <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com →</a>
-      </div>
-    </div>
-
-    <div class="field" id="field-groq">
-      <label>Groq API Key <span class="badge-free">FREE tier</span> <span>— <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
-      <input type="password" id="groqKey" placeholder="gsk_...">
-    </div>
-
-    <div class="field" id="field-google">
-      <label>Google AI API Key <span class="badge-free">FREE tier</span> <span>— <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
-      <input type="password" id="googleKey" placeholder="AIza...">
-    </div>
-
-    <div class="field" id="field-openrouter">
-      <label>OpenRouter API Key <span class="badge-free">FREE models</span> <span>— <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
-      <input type="password" id="openrouterKey" placeholder="sk-or-...">
-    </div>
-
-    <div class="field" id="field-minimax">
-      <label>MiniMax API Key <span class="badge-free">FREE credits</span> <span>— <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
-      <input type="password" id="minimaxKey" placeholder="eyJhbGci...">
-    </div>
-
-    <div class="field" id="field-anthropic">
-      <label>Anthropic API Key <span class="badge-paid">PAID</span> <span>— <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="anthropicKey" placeholder="sk-ant-api03-...">
-    </div>
-
-    <div class="field" id="field-openai">
-      <label>OpenAI API Key <span class="badge-paid">PAID</span> <span>— <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="openaiKey" placeholder="sk-proj-...">
-    </div>
-
-    <div class="field" id="field-mistral">
-      <label>Mistral API Key <span class="badge-paid">PAID</span> <span>— <a href="https://console.mistral.ai/api-keys/" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="mistralKey" placeholder="...">
-    </div>
+    <div class="card-title">🤖 AI Models</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Providers you selected in Step 3. 🟢 = free tier available.</p>
+    <div class="field" id="field-groq"><label>Groq <span class="badge-free">FREE</span> — <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="groqKey" placeholder="gsk_..."></div>
+    <div class="field" id="field-google"><label>Google AI <span class="badge-free">FREE</span> — <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="googleKey" placeholder="AIza..."></div>
+    <div class="field" id="field-openrouter"><label>OpenRouter <span class="badge-free">FREE models</span> — <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="openrouterKey" placeholder="sk-or-..."></div>
+    <div class="field" id="field-minimax"><label>MiniMax <span class="badge-free">FREE credits</span> — <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="minimaxKey" placeholder="eyJhbGci..."></div>
+    <div class="field" id="field-anthropic"><label>Anthropic <span class="badge-paid">PAID</span> — <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="anthropicKey" placeholder="sk-ant-api03-..."></div>
+    <div class="field" id="field-openai"><label>OpenAI <span class="badge-paid">PAID</span> — <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="openaiKey" placeholder="sk-proj-..."></div>
+    <div class="field" id="field-mistral"><label>Mistral <span class="badge-paid">PAID</span> — <a href="https://console.mistral.ai/api-keys/" target="_blank" style="color:var(--accent)">Get key →</a></label><input type="password" id="mistralKey" placeholder="..."></div>
+    <div class="field" id="field-ollama"><label>Ollama <span class="badge-free">FREE — local, no key</span></label><div style="font-size:0.82rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px"><code>brew install ollama</code> then <code>ollama pull llama3.1</code> — <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com →</a></div></div>
   </div>
 
+  <!-- Communications -->
   <div class="card">
-    <div class="card-title">Intelligence & Skills</div>
+    <div class="card-title">💬 Communications</div>
+
+    <div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">Telegram</div>
+    <div class="field"><label>Bot Token — <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">Create via BotFather →</a></label><input type="password" id="tgToken" placeholder="1234567890:AAFxxxxxxx"></div>
+    <div class="field"><label>Your Chat ID — <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">Get via @userinfobot →</a></label><input type="text" id="tgChatId" placeholder="123456789"><div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Message @userinfobot — it replies with your ID instantly</div></div>
+
+    <div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:18px 0 10px">Discord</div>
+    <div class="field"><label>Bot Token — <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Developer Portal →</a></label><input type="password" id="discordToken" placeholder="MTI..."></div>
+    <div class="field"><label>Channel ID</label><input type="text" id="discordChannelId" placeholder="1234567890123456789"><div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Discord → Settings → Advanced → Developer Mode → right-click channel → Copy ID</div></div>
+
+    <div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:18px 0 10px">Slack <span class="badge-free" style="font-weight:400;text-transform:none;letter-spacing:0">FREE</span></div>
+    <div class="field"><label>Bot Token — <a href="https://api.slack.com/apps" target="_blank" style="color:var(--accent)">api.slack.com/apps → Create App → OAuth & Permissions →</a></label><input type="password" id="slackBotToken" placeholder="xoxb-..."></div>
+    <div class="field"><label>Channel ID</label><input type="text" id="slackChannelId" placeholder="C0XXXXXXXXX"><div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Slack → right-click channel → View channel details → Copy Channel ID</div></div>
+  </div>
+
+  <!-- Gmail -->
+  <div class="card">
+    <div class="card-title">📧 Gmail — Send Emails</div>
+    <div class="info-box" style="margin-bottom:16px"><strong>Quick setup (5 min, no Google Cloud needed):</strong> Uses Gmail SMTP with an App Password. Agents can send email — CEO outreach, CFO invoices, CLO contracts. Read inbox requires the Full Google Suite setup below.</div>
     <div class="field">
-      <label>Firecrawl API Key <span>web scraping & research — <a href="https://www.firecrawl.dev/app/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <label>Gmail Address <span>the account your agents send from</span></label>
+      <input type="text" id="gmailAddress" placeholder="yourname@gmail.com">
+    </div>
+    <div class="field">
+      <label>Gmail App Password <span>16 characters — <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent)">myaccount.google.com → Security → App passwords →</a></span></label>
+      <input type="password" id="gmailAppPassword" placeholder="xxxx xxxx xxxx xxxx">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Requires 2-Step Verification to be enabled on your Google account first</div>
+    </div>
+  </div>
+
+  <!-- Google Full Suite -->
+  <div class="card">
+    <div class="card-title">🗂️ Google Full Suite — Drive, Docs, Sheets, Calendar</div>
+    <div class="info-box" style="margin-bottom:16px">
+      <strong>One-time setup (~10 min):</strong> Creates a Google Cloud project that gives your agents access to Drive, Docs, Sheets, and Calendar. Setup runs automatically on first install — you just need to click "Allow" in your browser once.<br><br>
+      <strong>Step-by-step:</strong><br>
+      1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a> → Create a new project (name it "OmniClaw")<br>
+      2. APIs & Services → Enable APIs → enable: <strong>Gmail API, Drive API, Docs API, Sheets API, Calendar API</strong><br>
+      3. APIs & Services → Credentials → Create Credentials → <strong>OAuth 2.0 Client ID</strong> → Application type: <strong>Desktop app</strong><br>
+      4. Copy the Client ID and Client Secret below<br>
+      5. On first install, your browser will open once for you to click "Allow" — then it's fully automated forever
+    </div>
+    <div class="field">
+      <label>Google OAuth Client ID — <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Cloud Console → Credentials →</a></label>
+      <input type="text" id="googleOAuthClientId" placeholder="123456789-xxxx.apps.googleusercontent.com">
+    </div>
+    <div class="field">
+      <label>Google OAuth Client Secret</label>
+      <input type="password" id="googleOAuthClientSecret" placeholder="GOCSPX-...">
+    </div>
+    <div class="field">
+      <label>Google Drive Output Folder <span>where agents save reports and files</span></label>
+      <input type="text" id="googleDriveFolderId" placeholder="Paste Drive folder URL or just the ID" oninput="previewGoogleDocs(this)">
+      <div id="googleDocsPreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Drive → right-click folder → Share → Copy link → paste here</div>
+    </div>
+    <div class="field">
+      <label>Google Sheets Decision Log <span>agents log decisions, KPIs, and data here</span></label>
+      <input type="text" id="googleSheetsId" placeholder="Paste Sheets URL or just the ID" oninput="extractSheetsId(this)">
+      <div id="googleSheetsPreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Open any Google Sheet → copy the URL → paste here (ID is extracted automatically)</div>
+    </div>
+    <div class="field">
+      <label>Google Calendar ID <span>agents create events, schedule reviews</span></label>
+      <input type="text" id="googleCalendarId" placeholder="primary  (or your-email@gmail.com)">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Leave as "primary" to use your main calendar, or: Calendar settings → scroll to Calendar ID</div>
+    </div>
+  </div>
+
+  <!-- Productivity -->
+  <div class="card">
+    <div class="card-title">📝 Notion <span class="badge-free" style="font-size:0.72rem;margin-left:6px">FREE</span></div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">Alternative/addition to Google Docs — agents create pages, log decisions, update databases. Many founders prefer Notion over Google Docs.</div>
+    <div class="field">
+      <label>Notion Integration Token — <a href="https://www.notion.so/my-integrations" target="_blank" style="color:var(--accent)">notion.so/my-integrations → New integration →</a></label>
+      <input type="password" id="notionToken" placeholder="secret_...">
+    </div>
+    <div class="field">
+      <label>Notion Database ID <span>where agents log decisions and briefings</span></label>
+      <input type="text" id="notionDatabaseId" placeholder="Paste Notion page/database URL or 32-char ID" oninput="extractNotionId(this)">
+      <div id="notionIdPreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Open the Notion database → Share → Copy link → paste here</div>
+    </div>
+  </div>
+
+  <!-- Research & Intelligence -->
+  <div class="card">
+    <div class="card-title">🔍 Research & Intelligence</div>
+    <div class="field">
+      <label>Firecrawl API Key <span>web scraping & competitive research — <a href="https://www.firecrawl.dev/app/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="firecrawlKey" placeholder="fc-...">
     </div>
     <div class="field">
-      <label>SkillsMP API Key <span>optional, dynamic skill discovery — <a href="https://skillsmp.com/settings" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <label>Perplexity API Key <span class="badge-paid">PAID (low cost ~$0.001/query)</span> — real-time web search for agents — <a href="https://www.perplexity.ai/settings/api" target="_blank" style="color:var(--accent)">Get key →</a></label>
+      <input type="password" id="perplexityApiKey" placeholder="pplx-...">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Upgrades CIO/CSO from scraping to live AI-powered web research</div>
+    </div>
+    <div class="field">
+      <label>NewsAPI Key <span class="badge-free">FREE (100 req/day)</span> — industry news for morning briefings — <a href="https://newsapi.org/register" target="_blank" style="color:var(--accent)">Get free key →</a></label>
+      <input type="password" id="newsApiKey" placeholder="abc123...">
+    </div>
+    <div class="field">
+      <label>SkillsMP API Key <span>dynamic skill discovery — <a href="https://skillsmp.com/settings" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="skillsmpKey" placeholder="smp-...">
     </div>
     <div class="field">
-      <label>ElevenLabs API Key <span class="badge-free">FREE tier</span> <span>— voice for your agents — <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
+      <label>ElevenLabs API Key <span class="badge-free">FREE tier</span> — voice for each agent — <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" style="color:var(--accent)">Get free key →</a></label>
       <input type="password" id="elevenlabsKey" placeholder="sk_...">
-      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Each C-Suite agent gets their own voice. Free tier gives 10,000 characters/month.</div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Each agent gets their own voice. Free tier = 10,000 characters/month.</div>
     </div>
   </div>
 
+  <!-- CRM -->
   <div class="card">
-    <div class="card-title">Communication Bridges</div>
+    <div class="card-title">🤝 CRM — HubSpot <span class="badge-free" style="font-size:0.72rem;margin-left:6px">FREE tier</span></div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">Your CSO and CRO can track contacts, deals, and pipeline. HubSpot free tier is generous — no credit card needed.</div>
     <div class="field">
-      <label>Telegram Bot Token <span>— <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">Create bot via BotFather →</a></span></label>
-      <input type="password" id="tgToken" placeholder="1234567890:AAFxxxxxxx">
-    </div>
-    <div class="field">
-      <label>Telegram Chat ID <span>where agents send you messages — <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">Get your ID via @userinfobot →</a></span></label>
-      <input type="text" id="tgChatId" placeholder="123456789">
-      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Message @userinfobot on Telegram — it replies with your chat ID instantly</div>
-    </div>
-    <div class="field">
-      <label>Discord Bot Token <span>optional — <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal →</a></span></label>
-      <input type="password" id="discordToken" placeholder="MTI...">
-    </div>
-    <div class="field">
-      <label>Discord Channel ID <span>optional — channel where agents post updates</span></label>
-      <input type="text" id="discordChannelId" placeholder="1234567890123456789">
-      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Discord → Settings → Advanced → Developer Mode ON → right-click channel → Copy Channel ID</div>
+      <label>HubSpot Private App Token — <a href="https://app.hubspot.com/private-apps" target="_blank" style="color:var(--accent)">HubSpot → Settings → Integrations → Private Apps → Create →</a></label>
+      <input type="password" id="hubspotApiKey" placeholder="pat-na1-...">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Create app, give it: CRM (contacts, deals, companies) — read & write scope</div>
     </div>
   </div>
 
+  <!-- Finance -->
   <div class="card">
-    <div class="card-title">Data & Storage</div>
+    <div class="card-title">💳 Finance — Stripe</div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">Your CFO can pull live MRR, check customers, flag failed payments. Use a read-only restricted key — zero risk.</div>
     <div class="field">
-      <label>Supabase Project Ref <span>optional — paste the short ref OR full URL — <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">Supabase Dashboard →</a></span></label>
+      <label>Stripe Restricted API Key <span class="badge-paid">requires Stripe account</span> — <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--accent)">Dashboard → Developers → API keys → Create restricted key →</a></label>
+      <input type="password" id="stripeApiKey" placeholder="rk_live_...">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Scopes to enable: Customers (read), Subscriptions (read), Charges (read) — never use your full secret key</div>
+    </div>
+  </div>
+
+  <!-- Data & Storage -->
+  <div class="card">
+    <div class="card-title">🗄️ Data & Storage</div>
+    <div class="field">
+      <label>Supabase Project Ref — <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">Supabase Dashboard →</a></label>
       <input type="text" id="supabaseUrl" placeholder="abcdefghijklmnop  (or full URL)" oninput="previewSupabase(this)">
       <div id="supabasePreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
-      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Find in: Supabase Dashboard → Project Settings → API → Project URL</div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">Project Settings → API → Project URL</div>
     </div>
     <div class="field">
-      <label>Supabase Anon Key <span>Project Settings → API → anon public key</span></label>
+      <label>Supabase Anon Key</label>
       <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
     </div>
-    <div class="field">
-      <label>Google Drive Folder <span>optional, report output — paste the share link or just the ID — <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">Google Drive →</a></span></label>
-      <input type="text" id="googleDocsId" placeholder="https://drive.google.com/drive/folders/1Bxi... or just the ID" oninput="previewGoogleDocs(this)">
-      <div id="googleDocsPreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
-      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Right-click any folder in Drive → Share → Copy link → paste above</div>
-    </div>
+    <!-- Legacy field kept for compatibility -->
+    <input type="hidden" id="googleDocsId" value="">
   </div>
 </div>
 
@@ -893,6 +953,37 @@ function previewGoogleDocs(el) {
   }
 }
 
+function extractSheetsId(el) {
+  const v = el.value.trim();
+  const m = v.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const id = m ? m[1] : v;
+  const preview = document.getElementById('googleSheetsPreview');
+  if (id !== v && id) { preview.textContent = `→ Extracted ID: ${id}`; preview.style.display = ''; }
+  else preview.style.display = 'none';
+}
+
+function extractNotionId(el) {
+  const v = el.value.trim();
+  // Notion IDs: 32 hex chars, optionally with hyphens, optionally in URL
+  const m = v.match(/([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+  const id = m ? m[1].replace(/-/g,'') : v;
+  const preview = document.getElementById('notionIdPreview');
+  if (m && id !== v) { preview.textContent = `→ Extracted ID: ${id}`; preview.style.display = ''; }
+  else preview.style.display = 'none';
+}
+
+function getNotionDatabaseId() {
+  const v = (document.getElementById('notionDatabaseId') || {}).value || '';
+  const m = v.match(/([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+  return m ? m[1].replace(/-/g,'') : v;
+}
+
+function getGoogleSheetsId() {
+  const v = (document.getElementById('googleSheetsId') || {}).value || '';
+  const m = v.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : v;
+}
+
 function switchPlatform(p, tab) {
   ['macos','windows','linux'].forEach(id => {
     document.getElementById('install-' + id).style.display = id === p ? '' : 'none';
@@ -971,10 +1062,31 @@ async function generatePackage() {
     tgChatId: val('tgChatId'),
     discordToken: val('discordToken'),
     discordChannelId: val('discordChannelId'),
+    slackBotToken: val('slackBotToken'),
+    slackChannelId: val('slackChannelId'),
+    // Gmail
+    gmailAddress: val('gmailAddress'),
+    gmailAppPassword: val('gmailAppPassword'),
+    // Google Full Suite
+    googleOAuthClientId: val('googleOAuthClientId'),
+    googleOAuthClientSecret: val('googleOAuthClientSecret'),
+    googleDriveFolderId: extractGoogleDocsId(val('googleDriveFolderId') || val('googleDocsId')),
+    googleSheetsId: getGoogleSheetsId(),
+    googleCalendarId: val('googleCalendarId') || 'primary',
+    googleDocsId: extractGoogleDocsId(val('googleDriveFolderId') || val('googleDocsId')), // legacy
+    // Notion
+    notionToken: val('notionToken'),
+    notionDatabaseId: getNotionDatabaseId(),
+    // Research
+    perplexityApiKey: val('perplexityApiKey'),
+    newsApiKey: val('newsApiKey'),
+    // CRM
+    hubspotApiKey: val('hubspotApiKey'),
+    // Finance
+    stripeApiKey: val('stripeApiKey'),
 
     supabaseUrl: normalizeSupabaseUrl(val('supabaseUrl')),
     supabaseKey: val('supabaseKey'),
-    googleDocsId: extractGoogleDocsId(val('googleDocsId')),
     githubUser: val('githubUser'),
     githubRepo: val('githubRepo') || 'omniclaw-bootstrap',
     githubToken: val('githubToken'),
@@ -1493,30 +1605,79 @@ MINIMAX_API_KEY="${c.minimaxKey}"
 MISTRAL_API_KEY="${c.mistralKey}"
 # Ollama runs locally — no key needed (http://localhost:11434)
 
-# Intelligence & Skills
-FIRECRAWL_API_KEY="${c.firecrawlKey}"
-SKILLSMP_API_KEY="${c.skillsmpKey}"
-ELEVENLABS_API_KEY="${c.elevenlabsKey}"
-
-# Agent Voices (ElevenLabs voice IDs)
-${Object.entries(c.agentVoices || {}).map(([id,v]) => `VOICE_${id}="${v}"`).join('\n')}
-
-# Communications
+# =============================================================================
+# COMMUNICATIONS
+# =============================================================================
 TG_TOKEN="${c.tgToken}"
 TG_CHAT_ID="${c.tgChatId}"
 DISCORD_TOKEN="${c.discordToken}"
 DISCORD_CHANNEL_ID="${c.discordChannelId}"
+SLACK_BOT_TOKEN="${c.slackBotToken}"
+SLACK_CHANNEL_ID="${c.slackChannelId}"
 
-# Data
+# =============================================================================
+# GMAIL — Send emails from agents (SMTP App Password, no Google Cloud needed)
+# Setup: myaccount.google.com → Security → 2-Step Verification → App passwords
+# =============================================================================
+GMAIL_ADDRESS="${c.gmailAddress}"
+GMAIL_APP_PASSWORD="${c.gmailAppPassword}"
+
+# =============================================================================
+# GOOGLE FULL SUITE — Drive, Docs, Sheets, Calendar (OAuth2)
+# First run: setup.sh opens browser once for you to click Allow
+# Credentials: console.cloud.google.com → APIs & Services → OAuth 2.0 Client IDs
+# =============================================================================
+GOOGLE_CLIENT_ID="${c.googleOAuthClientId}"
+GOOGLE_CLIENT_SECRET="${c.googleOAuthClientSecret}"
+GOOGLE_DRIVE_FOLDER_ID="${c.googleDriveFolderId}"
+GOOGLE_SHEETS_ID="${c.googleSheetsId}"
+GOOGLE_CALENDAR_ID="${c.googleCalendarId}"
+# Token saved automatically to memory/google-token.json on first auth — never commit this file
+
+# =============================================================================
+# PRODUCTIVITY
+# =============================================================================
+NOTION_TOKEN="${c.notionToken}"
+NOTION_DATABASE_ID="${c.notionDatabaseId}"
+
+# =============================================================================
+# RESEARCH & INTELLIGENCE
+# =============================================================================
+FIRECRAWL_API_KEY="${c.firecrawlKey}"
+PERPLEXITY_API_KEY="${c.perplexityApiKey}"
+NEWSAPI_KEY="${c.newsApiKey}"
+SKILLSMP_API_KEY="${c.skillsmpKey}"
+ELEVENLABS_API_KEY="${c.elevenlabsKey}"
+
+# Agent Voices (ElevenLabs voice IDs — set per agent)
+${Object.entries(c.agentVoices || {}).map(([id,v]) => `VOICE_${id}="${v}"`).join('\n')}
+
+# =============================================================================
+# CRM
+# =============================================================================
+HUBSPOT_API_KEY="${c.hubspotApiKey}"
+
+# =============================================================================
+# FINANCE
+# =============================================================================
+STRIPE_API_KEY="${c.stripeApiKey}"
+
+# =============================================================================
+# DATA & STORAGE
+# =============================================================================
 SUPABASE_URL="${c.supabaseUrl}"
 SUPABASE_KEY="${c.supabaseKey}"
-GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
+GOOGLE_DOCS_FOLDER_ID="${c.googleDriveFolderId}"
 
-# GitHub
+# =============================================================================
+# GITHUB
+# =============================================================================
 GITHUB_USER="${c.githubUser}"
 GITHUB_REPO="${c.githubRepo}"
 
-# Owner Profile (used to build agent memory)
+# =============================================================================
+# OWNER PROFILE (used to build agent context — edit memory/OWNER.md directly)
+# =============================================================================
 OWNER_WEBSITE="${c.ownerWebsite}"
 OWNER_LINKEDIN="${c.ownerLinkedIn}"
 OWNER_TWITTER="${c.ownerTwitter}"
@@ -1801,7 +1962,7 @@ function skillsList() {
 }
 
 function gitignoreContent() {
-  return `.env\n.env.local\nnode_modules/\ndashboard/node_modules/\nnpm-debug.log*\nlogs/\n*.log\n.dashboard.pid\n.DS_Store\nskills/opencli-rs/target/\n`;
+  return `.env\n.env.local\nnode_modules/\ndashboard/node_modules/\nnpm-debug.log*\nlogs/\n*.log\n.dashboard.pid\n.DS_Store\nskills/opencli-rs/target/\nmemory/google-token.json\nmemory/.tg-intros-sent\n.omniclaw-backup*/\n`;
 }
 
 function readmeContent(c) {

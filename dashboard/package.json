@@ -13,6 +13,11 @@
     "express": "^4.18.2",
     "js-yaml": "^4.1.0",
     "node-cron": "^3.0.3",
-    "socket.io": "^4.6.2"
+    "socket.io": "^4.6.2",
+    "nodemailer": "^6.9.0",
+    "googleapis": "^140.0.0",
+    "@slack/web-api": "^6.10.0",
+    "@notionhq/client": "^2.2.14",
+    "stripe": "^14.0.0"
   }
 }

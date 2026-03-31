@@ -12,6 +12,14 @@ const fs = require('fs');
 const cron = require('node-cron');
 const yaml = require('js-yaml');
 
+// Optional integrations — loaded only if keys are present
+let nodemailer, SlackWebClient, NotionClient, google, stripe;
+try { nodemailer = require('nodemailer'); } catch(_) {}
+try { const s = require('@slack/web-api'); SlackWebClient = s.WebClient; } catch(_) {}
+try { const n = require('@notionhq/client'); NotionClient = n.Client; } catch(_) {}
+try { google = require('googleapis').google; } catch(_) {}
+try { stripe = require('stripe'); } catch(_) {}
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -154,6 +162,9 @@ app.post('/api/decisions', (req, res) => {
       timestamp: new Date().toISOString(),
     };
     saveDecisions();
+    // Mirror decision to Notion and Google Sheets if configured
+    logToNotion(decision).catch(() => {});
+    logToSheets([decision.id, decision.timestamp, decision.objective, decision.status, decision.type]).catch(() => {});
     io.emit('decision:update', decision);
     // Update agent activity
     Object.keys(state.agents).forEach(id => {
@@ -493,6 +504,176 @@ async function pollTelegram() {
 }
 
 // =============================================================================
+// GMAIL — send emails via SMTP App Password
+// =============================================================================
+function getMailer() {
+  if (!nodemailer || !process.env.GMAIL_ADDRESS || !process.env.GMAIL_APP_PASSWORD) return null;
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.GMAIL_ADDRESS, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+}
+
+app.post('/api/email/send', async (req, res) => {
+  const { to, subject, body, from_agent } = req.body;
+  if (!to || !subject || !body) return res.status(400).json({ error: 'to, subject, body required' });
+  const mailer = getMailer();
+  if (!mailer) return res.status(503).json({ error: 'Gmail not configured. Add GMAIL_ADDRESS and GMAIL_APP_PASSWORD to .env' });
+  try {
+    const agent = from_agent || 'CEO';
+    await mailer.sendMail({
+      from: `${agent} — ${state.company} <${process.env.GMAIL_ADDRESS}>`,
+      to, subject, text: body,
+    });
+    console.log(`[GMAIL] Sent "${subject}" to ${to} (from ${agent})`);
+    res.json({ success: true, message: `Email sent to ${to}` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =============================================================================
+// SLACK — post messages to channel
+// =============================================================================
+function getSlack() {
+  if (!SlackWebClient || !process.env.SLACK_BOT_TOKEN) return null;
+  return new SlackWebClient(process.env.SLACK_BOT_TOKEN);
+}
+
+async function sendSlack(text, channel) {
+  const slack = getSlack();
+  if (!slack) return;
+  const ch = channel || process.env.SLACK_CHANNEL_ID;
+  if (!ch) return;
+  try {
+    await slack.chat.postMessage({ channel: ch, text });
+  } catch (e) { console.log('[SLACK] Send failed:', e.message); }
+}
+
+app.post('/api/slack/send', async (req, res) => {
+  const { text, channel } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  if (!getSlack()) return res.status(503).json({ error: 'Slack not configured. Add SLACK_BOT_TOKEN to .env' });
+  await sendSlack(text, channel);
+  res.json({ success: true });
+});
+
+// =============================================================================
+// GOOGLE SUITE — OAuth2 client (Drive, Docs, Sheets, Calendar)
+// Token is read from memory/google-token.json after first auth run
+// =============================================================================
+const GOOGLE_TOKEN_PATH = path.join(ROOT, 'memory', 'google-token.json');
+
+function getGoogleAuth() {
+  if (!google || !process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return null;
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    'http://localhost:8080/auth/google/callback'
+  );
+  if (fs.existsSync(GOOGLE_TOKEN_PATH)) {
+    auth.setCredentials(JSON.parse(fs.readFileSync(GOOGLE_TOKEN_PATH, 'utf8')));
+  }
+  return auth;
+}
+
+// Save a row to Google Sheets decision log
+async function logToSheets(rowData) {
+  const auth = getGoogleAuth();
+  if (!auth || !process.env.GOOGLE_SHEETS_ID) return;
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEETS_ID,
+      range: 'Sheet1!A:Z',
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [rowData] },
+    });
+  } catch (e) { console.log('[SHEETS] Log failed:', e.message); }
+}
+
+// Create a Google Doc
+app.post('/api/google/docs/create', async (req, res) => {
+  const { title, content } = req.body;
+  const auth = getGoogleAuth();
+  if (!auth) return res.status(503).json({ error: 'Google not configured or not authenticated' });
+  try {
+    const docs = google.docs({ version: 'v1', auth });
+    const doc = await docs.documents.create({ resource: { title: title || 'OmniClaw Report' } });
+    if (content) {
+      await docs.documents.batchUpdate({
+        documentId: doc.data.documentId,
+        resource: { requests: [{ insertText: { location: { index: 1 }, text: content } }] },
+      });
+    }
+    res.json({ success: true, documentId: doc.data.documentId, url: `https://docs.google.com/document/d/${doc.data.documentId}/edit` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Create a Google Calendar event
+app.post('/api/google/calendar/event', async (req, res) => {
+  const { summary, description, start, end } = req.body;
+  const auth = getGoogleAuth();
+  if (!auth) return res.status(503).json({ error: 'Google not configured or not authenticated' });
+  try {
+    const calendar = google.calendar({ version: 'v3', auth });
+    const event = await calendar.events.insert({
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+      resource: { summary, description, start: { dateTime: start }, end: { dateTime: end } },
+    });
+    res.json({ success: true, eventId: event.data.id, url: event.data.htmlLink });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// =============================================================================
+// NOTION — log decisions to database
+// =============================================================================
+function getNotion() {
+  if (!NotionClient || !process.env.NOTION_TOKEN) return null;
+  return new NotionClient({ auth: process.env.NOTION_TOKEN });
+}
+
+async function logToNotion(decision) {
+  const notion = getNotion();
+  if (!notion || !process.env.NOTION_DATABASE_ID) return;
+  try {
+    await notion.pages.create({
+      parent: { database_id: process.env.NOTION_DATABASE_ID },
+      properties: {
+        Name: { title: [{ text: { content: decision.objective || 'Decision' } }] },
+        Status: { select: { name: decision.status || 'processing' } },
+        Date: { date: { start: decision.timestamp || new Date().toISOString() } },
+      },
+      children: [{
+        object: 'block', type: 'paragraph',
+        paragraph: { rich_text: [{ text: { content: JSON.stringify(decision.ceoDecision || {}, null, 2) } }] },
+      }],
+    });
+  } catch (e) { console.log('[NOTION] Log failed:', e.message); }
+}
+
+// =============================================================================
+// INTEGRATIONS STATUS endpoint
+// =============================================================================
+app.get('/api/integrations/status', (req, res) => {
+  res.json({
+    telegram:   !!process.env.TG_TOKEN,
+    discord:    !!process.env.DISCORD_TOKEN,
+    slack:      !!process.env.SLACK_BOT_TOKEN,
+    gmail:      !!(process.env.GMAIL_ADDRESS && process.env.GMAIL_APP_PASSWORD),
+    google_suite: !!(process.env.GOOGLE_CLIENT_ID && fs.existsSync(GOOGLE_TOKEN_PATH)),
+    google_oauth_ready: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    notion:     !!process.env.NOTION_TOKEN,
+    hubspot:    !!process.env.HUBSPOT_API_KEY,
+    stripe:     !!process.env.STRIPE_API_KEY,
+    firecrawl:  !!process.env.FIRECRAWL_API_KEY,
+    perplexity: !!process.env.PERPLEXITY_API_KEY,
+    elevenlabs: !!process.env.ELEVENLABS_API_KEY,
+    supabase:   !!process.env.SUPABASE_URL,
+  });
+});
+
+// =============================================================================
 // AUTO-UPDATE CHECK
 // =============================================================================
 const VERSION_FILE = path.join(ROOT, 'VERSION');
@@ -545,6 +726,18 @@ server.listen(PORT, () => {
   // Detect which AI provider is active
   const chain = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
   console.log(`   AI Chain:  ${chain.join(' → ') || 'Not configured'}`);
+
+  // Integration status
+  const integrations = [];
+  if (process.env.SLACK_BOT_TOKEN)   integrations.push('Slack');
+  if (process.env.GMAIL_ADDRESS)     integrations.push('Gmail');
+  if (process.env.GOOGLE_CLIENT_ID)  integrations.push(fs.existsSync(GOOGLE_TOKEN_PATH) ? 'Google ✓' : 'Google (needs auth)');
+  if (process.env.NOTION_TOKEN)      integrations.push('Notion');
+  if (process.env.HUBSPOT_API_KEY)   integrations.push('HubSpot');
+  if (process.env.STRIPE_API_KEY)    integrations.push('Stripe');
+  if (process.env.FIRECRAWL_API_KEY) integrations.push('Firecrawl');
+  if (process.env.PERPLEXITY_API_KEY)integrations.push('Perplexity');
+  if (integrations.length) console.log(`   Suite:     ${integrations.join(' · ')}`);
 
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
