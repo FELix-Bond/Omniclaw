@@ -867,6 +867,14 @@ async function generatePackage() {
     // Docker
     zip.file('docker-compose.yml', dockerCompose(cfg));
 
+    // Platform launchers — double-click installers
+    zip.file('Install OmniClaw.command', macCommandLauncher(cfg));   // macOS double-click
+    zip.file('Install OmniClaw.ps1',     windowsPowerShellLauncher(cfg)); // Windows PowerShell
+    zip.file('install-linux.sh',         linuxLauncher(cfg));         // Linux
+
+    // First-run README inside the ZIP
+    zip.file('START HERE.txt', startHereTxt(cfg));
+
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -878,10 +886,16 @@ async function generatePackage() {
     btn.textContent = '✅ Downloaded!'; btn.disabled = false;
 
     document.getElementById('generatedOutput').style.display = '';
+    const launchInstructions = {
+      macos: `<strong>macOS:</strong> Unzip → double-click <code>Install OmniClaw.command</code><br><small style="color:var(--muted)">If blocked by Gatekeeper: right-click → Open → Open (one-time only)</small>`,
+      linux: `<strong>Linux:</strong> Unzip → <code>chmod +x install-linux.sh && ./install-linux.sh</code>`,
+      windows: `<strong>Windows:</strong> Unzip → right-click <code>Install OmniClaw.ps1</code> → Run with PowerShell`,
+    };
     document.getElementById('fileList').innerHTML = [
-      `omniclaw-deploy-${cfg.companyName}.zip — Complete deploy package (single file)`,
-      'Contains: setup.sh, .env, all C-Suite agent .md files, dashboard, configs, memory',
-    ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:0.85rem;color:var(--muted)">✅ ${f}</li>`).join('');
+      `<strong>omniclaw-deploy-${cfg.companyName}.zip</strong> downloaded ✅`,
+      launchInstructions[cfg.hostOS] || launchInstructions.macos,
+      `Also included: <code>START HERE.txt</code> with full instructions`,
+    ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px 16px;font-size:0.87rem;color:var(--text);line-height:1.6">${f}</li>`).join('');
     document.getElementById('dashUrl').textContent = `http://localhost:${cfg.dashPort}`;
     document.getElementById('ghCmd').textContent = `git remote add origin https://github.com/${cfg.githubUser}/${cfg.githubRepo}.git && git push -u origin main`;
   } catch(e) {
@@ -1086,6 +1100,147 @@ ENVEOF
 echo -e "  \${GREEN}✓ Latest code pulled. Handing off to setup.sh...\${NC}\\n"
 chmod +x setup.sh
 exec ./setup.sh
+`;
+}
+
+// =============================================================================
+// Platform launchers — these are the double-clickable installers in the ZIP
+// All three do the same thing: run setup.sh (which is the bootstrap launcher)
+// =============================================================================
+
+function macCommandLauncher(c) {
+  // .command files are double-clickable on macOS — Terminal opens and runs them
+  return `#!/bin/bash
+# OmniClaw Installer — ${c.companyName}
+# Double-click me in Finder to install OmniClaw.
+# If macOS blocks it: right-click → Open → Open (one-time only)
+# ============================================================
+
+# Move to the folder this file lives in (handles running from anywhere)
+cd "$(dirname "$0")"
+
+# Clear Terminal and show a friendly header
+clear
+echo ""
+echo "  🦾 OmniClaw — Zero-Human Company Installer"
+echo "  Company: ${c.companyName}"
+echo "  ============================================"
+echo ""
+echo "  This will install OmniClaw on your Mac."
+echo "  It may ask for your GitHub login in a moment."
+echo ""
+read -rp "  Press Enter to begin, or Ctrl+C to cancel... "
+echo ""
+
+# Run the bootstrap setup
+chmod +x setup.sh
+./setup.sh
+
+echo ""
+echo "  ✅ Done! Press Enter to close this window."
+read -r
+`;
+}
+
+function windowsPowerShellLauncher(c) {
+  // .ps1 — right-click → Run with PowerShell
+  return `# OmniClaw Installer — ${c.companyName}
+# Right-click this file → Run with PowerShell
+# ============================================
+
+$ErrorActionPreference = "Stop"
+
+Write-Host ""
+Write-Host "  OmniClaw — Zero-Human Company Installer" -ForegroundColor Cyan
+Write-Host "  Company: ${c.companyName}" -ForegroundColor Cyan
+Write-Host "  ============================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Checking for WSL (Windows Subsystem for Linux)..." -ForegroundColor Yellow
+
+# Check WSL is available
+if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "  WSL is required. Install it by opening PowerShell as Administrator and running:" -ForegroundColor Red
+    Write-Host "  wsl --install" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Then re-run this installer." -ForegroundColor Yellow
+    Read-Host "  Press Enter to exit"
+    exit 1
+}
+
+Write-Host "  WSL found. Launching installer inside WSL..." -ForegroundColor Green
+Write-Host ""
+
+# Get the Windows path to this folder and convert to WSL path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$wslPath = wsl wslpath "'$scriptDir'"
+
+# Run setup.sh inside WSL
+wsl bash -c "cd $wslPath && chmod +x setup.sh && ./setup.sh"
+
+Write-Host ""
+Read-Host "  Done! Press Enter to close"
+`;
+}
+
+function linuxLauncher(c) {
+  return `#!/bin/bash
+# OmniClaw Installer — ${c.companyName}
+# Run: chmod +x install-linux.sh && ./install-linux.sh
+cd "$(dirname "$0")"
+chmod +x setup.sh
+./setup.sh
+`;
+}
+
+function startHereTxt(c) {
+  return `OmniClaw — Zero-Human Company
+Company: ${c.companyName}
+Generated: ${new Date().toISOString()}
+================================================
+
+HOW TO INSTALL
+--------------
+
+macOS (easiest):
+  1. Unzip this folder
+  2. Double-click "Install OmniClaw.command"
+  3. If macOS says it can't be opened:
+     Right-click it → Open → click Open
+     (This is a one-time Gatekeeper bypass for unsigned scripts)
+
+Windows:
+  1. Unzip this folder
+  2. Right-click "Install OmniClaw.ps1"
+  3. Select "Run with PowerShell"
+  4. WSL (Windows Subsystem for Linux) must be installed
+     If not: open PowerShell as Admin and run: wsl --install
+
+Linux:
+  1. Unzip this folder
+  2. Open Terminal in the unzipped folder
+  3. Run: chmod +x install-linux.sh && ./install-linux.sh
+
+WHAT HAPPENS DURING INSTALL
+----------------------------
+  1. Your configuration (.env) is written from this package
+  2. GitHub CLI is installed and you log in (opens browser — one click)
+  3. The latest OmniClaw code is cloned from GitHub
+  4. All dependencies are installed (Node, Python, Rust if needed)
+  5. NemoClaw security sandbox is initialized
+  6. All ${c.agents.length} C-Suite agents are provisioned
+  7. Dashboard starts at http://localhost:${c.dashPort}
+
+AFTER INSTALL
+-------------
+  Dashboard: http://localhost:${c.dashPort}
+  To restart: cd ${c.projectRoot} && ./setup.sh
+  API keys:   cd ${c.projectRoot} && ./keys.sh view
+
+SUPPORT
+-------
+  GitHub: https://github.com/FELix-Bond/Omniclaw
+  Issues: https://github.com/FELix-Bond/Omniclaw/issues
 `;
 }
 
