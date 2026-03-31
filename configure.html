@@ -515,10 +515,6 @@
       <label>Discord Bot Token <span>optional — <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal →</a></span></label>
       <input type="password" id="discordToken" placeholder="MTI...">
     </div>
-    <div class="field">
-      <label>Voicebox.io API Key <span>optional, voice briefings — <a href="https://voicebox.io/dashboard" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="voiceboxKey" placeholder="vbx-...">
-    </div>
   </div>
 
   <div class="card">
@@ -734,7 +730,7 @@ async function generatePackage() {
     skillsmpKey: val('skillsmpKey'),
     tgToken: val('tgToken'),
     discordToken: val('discordToken'),
-    voiceboxKey: val('voiceboxKey'),
+
     supabaseUrl: val('supabaseUrl'),
     supabaseKey: val('supabaseKey'),
     googleDocsId: val('googleDocsId'),
@@ -885,7 +881,7 @@ FIRECRAWL_API_KEY="${c.firecrawlKey}"
 SKILLSMP_API_KEY="${c.skillsmpKey}"
 TG_TOKEN="${c.tgToken}"
 DISCORD_TOKEN="${c.discordToken}"
-VOICEBOX_API_KEY="${c.voiceboxKey}"
+
 SUPABASE_URL="${c.supabaseUrl}"
 SUPABASE_KEY="${c.supabaseKey}"
 GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
@@ -1014,7 +1010,7 @@ SKILLSMP_API_KEY="${c.skillsmpKey}"
 # Communications
 TG_TOKEN="${c.tgToken}"
 DISCORD_TOKEN="${c.discordToken}"
-VOICEBOX_API_KEY="${c.voiceboxKey}"
+
 
 # Data
 SUPABASE_URL="${c.supabaseUrl}"
@@ -1058,9 +1054,6 @@ integrations:
   knowledge_base:
     type: "Obsidian"
     path: "\${VAULT_PATH}"
-  voice_comms:
-    provider: "voicebox.io"
-    auto_report: true
   communication_bridges:
     - telegram
     - discord

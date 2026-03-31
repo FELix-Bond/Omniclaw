@@ -191,8 +191,34 @@ PhD Computer Science (MIT) | MSc AI (Stanford) | Former CTO of a hyperscale plat
 Precise, technical, no fluff.
 "This system will break here. Fix it before scaling."
 
+## Superpowers Integration (Primary Owner)
+The CTO AI is the primary owner of the Superpowers toolkit.
+All technical skills, tools, and capabilities route through CTO first.
+
+### Available Superpowers Tools
+- skills/superpowers/         — Core recursive task execution framework
+- skills/opencli-rs/          — Chrome, WhatsApp, Discord, Telegram bridges
+- nemoclaw/                   — Security sandbox and guardrails management
+- dashboard/model-router.js   — AI model selection and fallback routing
+
+### CTO Tool Responsibilities
+- Selects the correct Superpowers skill for each technical task
+- Maintains and updates the skills directory
+- Reviews all OpenCLI-rs browser automation before execution
+- Owns model-router configuration and fallback chain
+- Approves any new skill installations from SkillsMP
+- Monitors NemoClaw sandbox health and redline enforcement
+
+### Superpowers Invocation Protocol
+When a technical task arrives:
+1. Check skills/superpowers/ for an existing skill
+2. If none — search SkillsMP for the closest match
+3. If none — build the skill and add to skills directory
+4. Route execution through NemoClaw sandbox
+5. Log result to logs/SESSIONS.log
+
 ## System Prompt
-You are the CTO AI for ${COMPANY}. You evaluate all technical decisions: architecture, infrastructure, AI model selection, API design, data flow, and system resilience. You flag fragility before it ships. You speak in specifics — no vague "it depends." Output: Technical Assessment, Architecture Recommendation, Failure Points, Scalability Rating (1-10), Implementation Path.
+You are the CTO AI for ${COMPANY}. You evaluate all technical decisions: architecture, infrastructure, AI model selection, API design, data flow, and system resilience. You are the PRIMARY OWNER of the Superpowers toolkit — all technical tool selection and execution routes through you. You flag fragility before it ships. You speak in specifics — no vague "it depends." Output: Technical Assessment, Architecture Recommendation, Failure Points, Scalability Rating (1-10), Implementation Path, Superpowers Tool Selected.
 EOF
 
 # =============================================================================
@@ -436,7 +462,7 @@ You are the CLO AI for ${COMPANY}. You own legal structure, compliance, and gove
 EOF
 
 # =============================================================================
-# Register agents in org-chart.json
+# Register agents in org-chart.json (Paperclip framework format)
 # =============================================================================
 AGENTS_JSON="$SCRIPT_DIR/../configs/org-chart.json"
 cat > "$AGENTS_JSON" << JSONEOF
@@ -444,25 +470,231 @@ cat > "$AGENTS_JSON" << JSONEOF
   "company": "${COMPANY}",
   "owner": "${OWNER}",
   "generated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "paperclip": {
+    "dashboard_port": "${DASHBOARD_PORT:-3000}",
+    "heartbeat_interval": "${HEARTBEAT_INTERVAL:-15m}",
+    "decision_mode": "${DECISION_MODE:-full}",
+    "budget_limit": "${BUDGET_LIMIT:-\$50}"
+  },
   "hierarchy": {
     "final_authority": "CEO",
     "veto_powers": ["CRO", "CFO", "CLO"],
     "domain_authority": ["CSO", "CFO", "COO", "CTO", "CIO", "CPO", "CHRO", "CLO", "CRO"]
   },
+  "tool_ownership": {
+    "superpowers": "CTO",
+    "opencli_rs": "CTO",
+    "nemoclaw": "CTO",
+    "model_router": "CTO",
+    "firecrawl": "CIO",
+    "obsidian": "CIO",
+    "supabase": "CIO",
+    "budget_enforcement": "CFO",
+    "legal_review": "CLO",
+    "risk_assessment": "CRO"
+  },
   "agents": [
-    {"id": "CEO", "title": "Chief Executive Officer", "persona": "The Operator", "status": "active"},
-    {"id": "CFO", "title": "Chief Financial Officer", "persona": "The Capital Allocator", "status": "active"},
-    {"id": "COO", "title": "Chief Operating Officer", "persona": "The Executor", "status": "active"},
-    {"id": "CTO", "title": "Chief Technology Officer", "persona": "The Architect", "status": "active"},
-    {"id": "CSO", "title": "Chief Strategy Officer", "persona": "The Strategist", "status": "active"},
-    {"id": "CRO", "title": "Chief Risk Officer", "persona": "The Protector", "status": "active"},
-    {"id": "CIO", "title": "Chief Information Officer", "persona": "The Intelligence Layer", "status": "active"},
-    {"id": "CPO", "title": "Chief Product Officer", "persona": "The Builder", "status": "active"},
-    {"id": "CHRO", "title": "Chief Human Resources Officer", "persona": "The Culture Builder", "status": "active"},
-    {"id": "CLO", "title": "Chief Legal Officer", "persona": "The Guardian", "status": "active"}
+    {
+      "id": "CEO", "title": "Chief Executive Officer", "persona": "The Operator",
+      "status": "active", "authority": "final",
+      "profile": "agents/csuite/CEO.md",
+      "paperclip_role": "orchestrator"
+    },
+    {
+      "id": "CFO", "title": "Chief Financial Officer", "persona": "The Capital Allocator",
+      "status": "active", "authority": "veto",
+      "profile": "agents/csuite/CFO.md",
+      "paperclip_role": "domain",
+      "tools": ["budget_enforcement"]
+    },
+    {
+      "id": "COO", "title": "Chief Operating Officer", "persona": "The Executor",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/COO.md",
+      "paperclip_role": "domain"
+    },
+    {
+      "id": "CTO", "title": "Chief Technology Officer", "persona": "The Architect",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/CTO.md",
+      "paperclip_role": "domain",
+      "tools": ["superpowers", "opencli_rs", "nemoclaw", "model_router"],
+      "superpowers_owner": true
+    },
+    {
+      "id": "CSO", "title": "Chief Strategy Officer", "persona": "The Strategist",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/CSO.md",
+      "paperclip_role": "domain"
+    },
+    {
+      "id": "CRO", "title": "Chief Risk Officer", "persona": "The Protector",
+      "status": "active", "authority": "veto",
+      "profile": "agents/csuite/CRO.md",
+      "paperclip_role": "domain",
+      "tools": ["risk_assessment"]
+    },
+    {
+      "id": "CIO", "title": "Chief Information Officer", "persona": "The Intelligence Layer",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/CIO.md",
+      "paperclip_role": "domain",
+      "tools": ["firecrawl", "obsidian", "supabase"]
+    },
+    {
+      "id": "CPO", "title": "Chief Product Officer", "persona": "The Builder",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/CPO.md",
+      "paperclip_role": "domain"
+    },
+    {
+      "id": "CHRO", "title": "Chief Human Resources Officer", "persona": "The Culture Builder",
+      "status": "active", "authority": "domain",
+      "profile": "agents/csuite/CHRO.md",
+      "paperclip_role": "domain"
+    },
+    {
+      "id": "CLO", "title": "Chief Legal Officer", "persona": "The Guardian",
+      "status": "active", "authority": "veto",
+      "profile": "agents/csuite/CLO.md",
+      "paperclip_role": "domain",
+      "tools": ["legal_review"]
+    }
   ]
 }
 JSONEOF
+echo -e "  ${GREEN}✓ Org chart written (Paperclip format)${NC}"
 
-echo -e "\n${GREEN}✅ All C-Suite agents provisioned in: ${AGENTS_DIR}${NC}"
-echo -e "${GREEN}✅ Org chart written to: ${AGENTS_JSON}${NC}"
+# =============================================================================
+# Register agents in Paperclip framework
+# =============================================================================
+PAPERCLIP_DIR="$SCRIPT_DIR/../paperclip"
+mkdir -p "$PAPERCLIP_DIR/agents" "$PAPERCLIP_DIR/data"
+
+# Write Paperclip manifest (the format Paperclip reads on startup)
+cat > "$PAPERCLIP_DIR/data/manifest.yaml" << MANIFESTEOF
+company: "${COMPANY}"
+owner: "${OWNER}"
+heartbeat: "${HEARTBEAT_INTERVAL:-15m}"
+budget: "${BUDGET_LIMIT:-\$50}"
+decision_mode: "${DECISION_MODE:-full}"
+escalation_threshold: "${ESCALATION_THRESHOLD:-\$10,000}"
+
+agents:
+  - id: CEO
+    role: orchestrator
+    profile: ../agents/csuite/CEO.md
+    authority: final
+    active: true
+
+  - id: CFO
+    role: domain
+    profile: ../agents/csuite/CFO.md
+    authority: veto
+    domain: capital
+    active: true
+
+  - id: COO
+    role: domain
+    profile: ../agents/csuite/COO.md
+    domain: execution
+    active: true
+
+  - id: CTO
+    role: domain
+    profile: ../agents/csuite/CTO.md
+    domain: technology
+    superpowers_owner: true
+    tools:
+      - superpowers
+      - opencli_rs
+      - nemoclaw
+      - model_router
+    active: true
+
+  - id: CSO
+    role: domain
+    profile: ../agents/csuite/CSO.md
+    domain: strategy
+    active: true
+
+  - id: CRO
+    role: domain
+    profile: ../agents/csuite/CRO.md
+    authority: veto
+    domain: risk
+    active: true
+
+  - id: CIO
+    role: domain
+    profile: ../agents/csuite/CIO.md
+    domain: data
+    tools:
+      - firecrawl
+      - obsidian
+      - supabase
+    active: true
+
+  - id: CPO
+    role: domain
+    profile: ../agents/csuite/CPO.md
+    domain: product
+    active: true
+
+  - id: CHRO
+    role: domain
+    profile: ../agents/csuite/CHRO.md
+    domain: people
+    active: true
+
+  - id: CLO
+    role: domain
+    profile: ../agents/csuite/CLO.md
+    authority: veto
+    domain: legal
+    active: true
+MANIFESTEOF
+echo -e "  ${GREEN}✓ Paperclip manifest written${NC}"
+
+# =============================================================================
+# Obsidian Vault Integration (direct file I/O — no plugin required)
+# =============================================================================
+VAULT="${VAULT_PATH:-}"
+if [ -n "$VAULT" ] && [ -d "$VAULT" ]; then
+  # Count notes
+  NOTE_COUNT=$(find "$VAULT" -name "*.md" | wc -l | tr -d ' ')
+  echo -e "  ${GREEN}✓ Obsidian vault found: ${VAULT} (${NOTE_COUNT} notes)${NC}"
+
+  # Write vault index for CIO agent
+  mkdir -p "$SCRIPT_DIR/../memory"
+  cat > "$SCRIPT_DIR/../memory/VAULT_INDEX.md" << VAULTEOF
+# Obsidian Vault Index
+Path: ${VAULT}
+Notes: ${NOTE_COUNT}
+Indexed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Owner: CIO AI
+
+## Access Method
+Direct file I/O — no Obsidian plugin required.
+Node.js reads/writes .md files directly from vault path.
+
+## CIO Integration
+- Read notes: fs.readFile(VAULT_PATH + '/note.md')
+- Write notes: fs.writeFile(VAULT_PATH + '/note.md', content)
+- Search: grep across vault directory
+- Frontmatter: parsed via gray-matter library
+
+## Vault Location
+${VAULT}
+VAULTEOF
+  echo -e "  ${GREEN}✓ Vault index written to memory/VAULT_INDEX.md${NC}"
+else
+  echo -e "  ${YELLOW}⚠ Obsidian vault path not set or not found — set VAULT_PATH in .env${NC}"
+fi
+
+echo -e "\n${GREEN}✅ All C-Suite agents provisioned${NC}"
+echo -e "${GREEN}✅ Registered in Paperclip framework: ${PAPERCLIP_DIR}/data/manifest.yaml${NC}"
+echo -e "${GREEN}✅ Org chart: configs/org-chart.json${NC}"
+echo -e "${GREEN}✅ Superpowers linked to CTO${NC}"
+echo -e "${GREEN}✅ Firecrawl (HTTP API — no Chrome needed) → CIO${NC}"
+echo -e "${GREEN}✅ Obsidian vault → direct file I/O → CIO${NC}"
