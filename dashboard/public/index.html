@@ -156,7 +156,7 @@
     <div class="nav-item" onclick="showPanel('heartbeat')"><span class="nav-icon">💓</span> Heartbeat</div>
     <div class="nav-item" onclick="showPanel('memory')"><span class="nav-icon">🧠</span> Memory</div>
     <div class="nav-item" onclick="showPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
-    <a class="nav-link" href="https://app.openclaw.ai" target="_blank"><span class="nav-icon">🔗</span> OpenClaw ↗</a>
+    <a class="nav-link" href="https://github.com/FELix-Bond/Omniclaw" target="_blank"><span class="nav-icon">🔗</span> GitHub ↗</a>
   </nav>
   <div class="sidebar-footer">
     <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)">
@@ -367,10 +367,11 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + id)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
-  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory' };
+  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
   if (id === 'memory') loadMemory();
   if (id === 'github') refreshGithub();
+  if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
 }
 
 // =============================================================================
@@ -635,18 +636,6 @@ async function loadChatHistory() {
     msgs.forEach(m => appendChatBubble(m));
   } catch(e) {}
 }
-
-const _origShowPanel = showPanel;
-function showPanel(id) {
-  _origShowPanel(id);
-  if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
-}
-
-// Fix nav active state for chat
-document.querySelectorAll('.nav-item').forEach(n => {
-  const orig = n.getAttribute('onclick');
-  if (orig?.includes('chat')) n.classList.add('chat-nav');
-});
 
 // Init
 loadStatus();

@@ -284,25 +284,26 @@ async function callAI(messages) {
       }
       if (provider === 'groq' && process.env.GROQ_API_KEY) {
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: model || 'llama-3.1-70b-versatile',
+          model: model || 'llama-3.3-70b-versatile',  // updated model name
           messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
           max_tokens: 1024,
         }, { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 30000 });
         return r.data.choices[0].message.content;
       }
       if (provider === 'gemini' && process.env.GOOGLE_AI_API_KEY) {
+        const geminiModel = model || 'gemini-1.5-flash';
         const r = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
-          { contents: [{ parts: [{ text: getSystemPrompt() + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
+          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
+          { contents: [{ role: 'user', parts: [{ text: getSystemPrompt() + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
           { timeout: 30000 }
         );
         return r.data.candidates[0].content.parts[0].text;
       }
       if (provider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
         const r = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-          model: model || 'meta-llama/llama-3.1-405b',
+          model: model || 'meta-llama/llama-3.1-8b-instruct:free',
           messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
-        }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }, timeout: 30000 });
+        }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'HTTP-Referer': 'https://omniclaw.ai' }, timeout: 30000 });
         return r.data.choices[0].message.content;
       }
       if (provider === 'ollama') {
@@ -361,7 +362,7 @@ async function sendTelegram(chatId, text) {
   if (!process.env.TG_TOKEN) return;
   try {
     await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, {
-      chat_id: chatId, text, parse_mode: 'Markdown',
+      chat_id: chatId, text,
     }, { timeout: 10000 });
   } catch (e) { console.log('[TG] Send failed:', e.message); }
 }
