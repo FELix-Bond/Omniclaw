@@ -1,0 +1,180 @@
+# =============================================================================
+# OmniClaw Company Manifest — init-company.yaml
+# This is the "DNA" of your Zero-Human Company.
+# Populated by configure.html — do not edit manually unless you know what
+# you're doing.
+# =============================================================================
+
+company_name: "${COMPANY_NAME}"
+owner: "${OWNER_NAME}"
+mission: "${MISSION}"
+timezone: "${TIMEZONE}"
+
+# -----------------------------------------------------------------------------
+# Orchestration
+# -----------------------------------------------------------------------------
+orchestration:
+  platform: "paperclip-ai"
+  dashboard_port: ${DASHBOARD_PORT}
+  heartbeat_interval: "${HEARTBEAT_INTERVAL}"   # 5m / 15m / 30m / 1h
+  decision_mode: "${DECISION_MODE}"             # rapid / full / deep
+  escalation_threshold: "${ESCALATION_THRESHOLD}"
+  auto_open_dashboard: ${AUTO_OPEN_DASHBOARD}
+
+# -----------------------------------------------------------------------------
+# Infrastructure
+# -----------------------------------------------------------------------------
+infrastructure:
+  host_os: "${HOST_OS}"
+  runtime: "${NEMOCLAW_RUNTIME}"          # openshell-v4 / docker
+  brain: "${INFERENCE_ENGINE}"            # turboquant-int4 / ollama / cloud-only
+  cloud_model: "${CLOUD_MODEL}"           # claude-sonnet-4-6 / gpt-4o / etc.
+
+# -----------------------------------------------------------------------------
+# C-Suite Agents (The "Hiring" Process)
+# -----------------------------------------------------------------------------
+agents:
+  - role: "CEO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["superpowers-core", "firecrawl-intel"]
+    authority: "final"
+    budget_limit: "${BUDGET_LIMIT}/mo"
+
+  - role: "CFO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["financial-analysis", "capital-allocation"]
+    authority: "veto"
+    domain: "capital"
+
+  - role: "COO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["execution-planning", "ops-monitor"]
+    domain: "execution"
+
+  - role: "CTO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["architecture-review", "code-analysis"]
+    domain: "technology"
+
+  - role: "CSO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["competitive-intel", "strategic-planning"]
+    domain: "strategy"
+
+  - role: "CRO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["risk-assessment", "downside-analysis"]
+    authority: "veto"
+    domain: "risk"
+
+  - role: "CIO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["data-architecture", "analytics-pipeline"]
+    domain: "data"
+
+  - role: "CPO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["product-strategy", "ux-review"]
+    domain: "product"
+
+  - role: "CHRO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["org-design", "capability-mapping"]
+    domain: "people"
+
+  - role: "CLO_Agent"
+    framework: "OpenClaw"
+    memory: "obsidian-vault-link"
+    skills: ["legal-review", "compliance-check"]
+    authority: "veto"
+    domain: "legal"
+
+# -----------------------------------------------------------------------------
+# Decision Engine Configuration
+# -----------------------------------------------------------------------------
+decision_engine:
+  kill_conditions:
+    - agent: "CRO"
+      score: -2    # Critical Failure = auto-reject
+    - agent: "CFO"
+      score: -2
+    - agent: "CLO"
+      score: -2
+  weighting:
+    capital_decision:
+      CFO: 0.25
+      CRO: 0.20
+      CSO: 0.20
+      COO: 0.15
+      others: 0.20
+    product_decision:
+      CPO: 0.25
+      CTO: 0.20
+      CSO: 0.15
+      COO: 0.15
+      others: 0.25
+    strategic_decision:
+      CSO: 0.30
+      CEO: 0.20
+      CFO: 0.15
+      CRO: 0.15
+      others: 0.20
+
+# -----------------------------------------------------------------------------
+# Integrations
+# -----------------------------------------------------------------------------
+integrations:
+  knowledge_base:
+    type: "Obsidian"
+    path: "${VAULT_PATH}"
+  voice_comms:
+    provider: "voicebox.io"
+    auto_report: true
+    api_key: "${VOICEBOX_API_KEY}"
+  communication_bridges:
+    - type: "telegram"
+      token: "${TG_TOKEN}"
+    - type: "discord"
+      token: "${DISCORD_TOKEN}"
+  web_intelligence:
+    provider: "firecrawl"
+    api_key: "${FIRECRAWL_API_KEY}"
+  persistent_memory:
+    provider: "supabase"
+    url: "${SUPABASE_URL}"
+    key: "${SUPABASE_KEY}"
+
+# -----------------------------------------------------------------------------
+# Skill Marketplace
+# -----------------------------------------------------------------------------
+capabilities:
+  managed_skills:
+    - source: "github:obra/superpowers"
+    - source: "skillsmp:openclaw/self-improvement"
+    - source: "skillsmp:mcp-server-builder"
+    - source: "skillsmp:diegosouzapw/ai-engineer"
+    - source: "skillsmp:bcastelino/ai-product"
+  dynamic_discovery:
+    enabled: true
+    provider: "skillsmp.com"
+    api_key: "${SKILLSMP_API_KEY}"
+    auto_install_policy: "ask_permission"
+
+# -----------------------------------------------------------------------------
+# Safety Guardrails (NemoClaw Redlines)
+# -----------------------------------------------------------------------------
+guardrails:
+  max_file_deletion_scope: "memory/"   # Agents cannot delete outside /memory
+  budget_enforcement: true
+  session_logging: true
+  log_file: "logs/SESSIONS.log"
+  web_action_approval: true            # All web actions require logging

@@ -1,0 +1,35 @@
+# OmniClaw — Curated SkillsMP Fast-Track List
+# These skills are pre-installed by setup.sh via: npx skills add <slug>
+# Format: slug | description | priority
+
+# === CORE (Always Install) ===
+openclaw/self-improvement     | Agent self-improvement loop — learns from decision outcomes     | CRITICAL
+diegosouzapw/ai-engineer      | RAG, vector DB, and agent architecture best practices          | CRITICAL
+mcp-server-builder            | Build Model Context Protocol servers for tool integration       | CRITICAL
+
+# === PRODUCTIVITY ===
+bcastelino/ai-product         | GDocs, GMail, calendar automation and output formatting        | HIGH
+obsidian-sync                 | Obsidian vault read/write, note creation, search               | HIGH
+firecrawl-intel               | Web scraping, competitive research, news aggregation           | HIGH
+
+# === COMMUNICATIONS ===
+telegram-notifier             | Send reports and alerts to Telegram                            | HIGH
+discord-bridge                | Post to Discord channels, manage webhooks                      | MEDIUM
+email-dispatch                | Compose and send emails via SMTP or GMail API                  | MEDIUM
+
+# === FINANCIAL ===
+financial-analysis            | DCF modelling, IRR calculation, capital stack analysis         | HIGH
+market-data                   | Pull live market data, price feeds, economic indicators        | MEDIUM
+
+# === LEGAL & COMPLIANCE ===
+contract-review               | Flag non-standard clauses, compliance gaps                     | MEDIUM
+gdpr-checker                  | Check data handling for GDPR/privacy compliance                | MEDIUM
+
+# === TECHNICAL ===
+code-review                   | Code quality, security analysis, architecture review           | MEDIUM
+github-integration            | Create repos, push code, manage PRs via GitHub API             | HIGH
+supabase-query                | Query and write to Supabase/Postgres databases                 | HIGH
+
+# === VOICE & REPORTING ===
+voicebox-reports              | Convert executive summaries to voice briefings                 | LOW
+pdf-report                    | Generate formatted PDF reports from agent outputs              | MEDIUM

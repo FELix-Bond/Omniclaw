@@ -1,0 +1,28 @@
+# Environment — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dashboard/node_modules/
+npm-debug.log*
+
+# Logs
+logs/
+*.log
+.dashboard.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dashboard/dist/
+*.compiled
+
+# Sensitive generated files
+agents/csuite/*.generated.md
+
+# Rust build
+skills/opencli-rs/target/

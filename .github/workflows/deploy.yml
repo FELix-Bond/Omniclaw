@@ -1,0 +1,89 @@
+name: OmniClaw CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Validate Config & Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required files exist
+        run: |
+          required=("setup.sh" "configure.html" "docker-compose.yml" "configs/init-company.yaml" "agents/create-csuite.sh" "dashboard/server.js" "dashboard/package.json")
+          for f in "${required[@]}"; do
+            [ -f "$f" ] && echo "✓ $f" || { echo "✗ MISSING: $f"; exit 1; }
+          done
+
+      - name: Validate shell scripts
+        run: |
+          bash -n setup.sh && echo "✓ setup.sh syntax OK"
+          bash -n agents/create-csuite.sh && echo "✓ create-csuite.sh syntax OK"
+
+      - name: Validate YAML config
+        run: |
+          pip install pyyaml -q
+          python3 -c "
+          import yaml, re, sys
+          with open('configs/init-company.yaml') as f:
+            content = f.read()
+          # Replace \${VAR} placeholders for validation
+          content = re.sub(r'\\\${[^}]+}', 'placeholder', content)
+          yaml.safe_load(content)
+          print('✓ init-company.yaml valid YAML')
+          "
+
+      - name: Validate agent .md files are complete
+        run: |
+          expected=(CEO CFO COO CTO CSO CRO CIO CPO CHRO CLO)
+          # Run the creation script to generate them
+          bash agents/create-csuite.sh
+          for agent in "${expected[@]}"; do
+            [ -f "agents/csuite/${agent}.md" ] && echo "✓ ${agent}.md" || { echo "✗ MISSING: ${agent}.md"; exit 1; }
+          done
+
+  # ---------------------------------------------------------------------------
+  # Dashboard Test
+  # ---------------------------------------------------------------------------
+  dashboard:
+    name: Dashboard Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Install dashboard dependencies
+        run: cd dashboard && npm ci --production
+
+      - name: Syntax check server.js
+        run: node --check dashboard/server.js && echo "✓ server.js syntax OK"
+
+  # ---------------------------------------------------------------------------
+  # Docker Build (if Dockerfile present)
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dashboard image
+        run: docker build -t omniclaw-dashboard:latest ./dashboard
+      - name: Test container starts
+        run: |
+          docker run -d --name test-dashboard -p 3001:3000 \
+            -e COMPANY_NAME=TestCo -e OWNER_NAME=Test \
+            -e HEARTBEAT_INTERVAL=15m -e BUDGET_LIMIT='$50' \
+            omniclaw-dashboard:latest
+          sleep 5
+          curl -f http://localhost:3001/api/status && echo "✓ Dashboard API responding"
+          docker stop test-dashboard

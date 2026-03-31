@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmniClaw — Paperclip Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #161922; --surface2: #1e222d; --border: #2a2f3d;
+    --accent: #5b8dee; --green: #3dd68c; --red: #e05c5c; --yellow: #f0b429;
+    --purple: #7c5cbf; --text: #e2e8f0; --muted: #7a8499; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+  /* SIDEBAR */
+  .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-logo { padding: 20px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo h2 { font-size: 1.1rem; font-weight: 700; }
+  .sidebar-logo p { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .sidebar-nav { flex: 1; padding: 12px 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 0.85rem; cursor: pointer; color: var(--muted); transition: all 0.15s; border-left: 3px solid transparent; }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(91,141,238,0.07); }
+  .nav-icon { width: 18px; text-align: center; }
+  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+  .heartbeat-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* MAIN */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .topbar h1 { font-size: 1.1rem; font-weight: 600; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .badge { font-size: 0.75rem; padding: 4px 10px; border-radius: 12px; font-weight: 500; }
+  .badge-green { background: rgba(61,214,140,0.15); color: var(--green); }
+  .badge-yellow { background: rgba(240,180,41,0.15); color: var(--yellow); }
+  .badge-red { background: rgba(224,92,92,0.15); color: var(--red); }
+  .badge-blue { background: rgba(91,141,238,0.15); color: var(--accent); }
+  .btn-sm { padding: 7px 16px; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+  .content { flex: 1; overflow-y: auto; padding: 24px 28px; }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* METRIC CARDS */
+  .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .metric-card .m-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+  .metric-card .m-val { font-size: 1.8rem; font-weight: 700; margin-top: 6px; }
+  .metric-card .m-sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  /* AGENT GRID */
+  .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .agent-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all 0.15s; }
+  .agent-tile:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .agent-tile .at-id { font-size: 0.7rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; }
+  .agent-tile .at-name { font-size: 0.95rem; font-weight: 600; margin-top: 2px; }
+  .agent-tile .at-persona { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+  .agent-tile .at-status { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 0.75rem; color: var(--muted); }
+  .at-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .at-dot.active { background: var(--green); }
+  .at-dot.idle { background: var(--muted); }
+
+  /* DECISIONS TABLE */
+  .dec-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .dec-table th { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .dec-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .dec-table tr:last-child td { border-bottom: none; }
+  .dec-id { font-family: monospace; font-size: 0.78rem; color: var(--muted); }
+
+  /* DECISION FORM */
+  .dec-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+  .dec-form h3 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .form-field label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 5px; }
+  .form-field input, .form-field select, .form-field textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); padding: 9px 12px; font-size: 0.88rem;
+    font-family: inherit;
+  }
+  .form-field textarea { min-height: 70px; resize: vertical; }
+
+  /* GITHUB PANEL */
+  .gh-status-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .gh-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .gh-row:last-child { border-bottom: none; }
+  .gh-label { font-size: 0.85rem; color: var(--muted); }
+  .gh-val { font-size: 0.9rem; font-weight: 500; }
+
+  /* HEARTBEAT LOG */
+  .hb-log { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-family: monospace; font-size: 0.8rem; color: var(--muted); max-height: 300px; overflow-y: auto; }
+  .hb-entry { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .hb-entry:last-child { border-bottom: none; }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 600px; max-width: 95vw; max-height: 80vh; overflow-y: auto; }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-header h3 { font-size: 1rem; font-weight: 600; }
+  .modal-close { cursor: pointer; color: var(--muted); font-size: 1.2rem; }
+  .modal-body { padding: 24px; }
+  .profile-md { font-size: 0.85rem; line-height: 1.7; color: var(--muted); white-space: pre-wrap; }
+  .profile-md h1, .profile-md h2 { color: var(--text); margin-bottom: 8px; }
+  .profile-md h3 { color: var(--accent); margin-bottom: 4px; }
+
+  /* Org chart */
+  .org-chart { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 20px; }
+  .org-ceo { background: linear-gradient(135deg, var(--accent), var(--purple)); color: #fff; border-radius: 10px; padding: 16px 32px; font-weight: 700; text-align: center; }
+  .org-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .org-agent { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; text-align: center; font-size: 0.82rem; cursor: pointer; transition: border-color 0.15s; }
+  .org-agent:hover { border-color: var(--accent); }
+  .org-agent .oa-id { font-weight: 700; color: var(--accent); }
+  .org-veto { border-color: var(--red) !important; }
+  .org-connector { width: 2px; height: 20px; background: var(--border); }
+
+  .section-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <h2>🦾 OmniClaw</h2>
+    <p id="companyLabel">Zero-Human Company</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-item active" onclick="showPanel('dashboard')"><span class="nav-icon">⚡</span> Dashboard</div>
+    <div class="nav-item" onclick="showPanel('agents')"><span class="nav-icon">🤖</span> C-Suite Agents</div>
+    <div class="nav-item" onclick="showPanel('decisions')"><span class="nav-icon">⚖️</span> Decision Engine</div>
+    <div class="nav-item" onclick="showPanel('orgchart')"><span class="nav-icon">🏛️</span> Org Chart</div>
+    <div class="nav-item" onclick="showPanel('github')"><span class="nav-icon">🐙</span> GitHub</div>
+    <div class="nav-item" onclick="showPanel('heartbeat')"><span class="nav-icon">💓</span> Heartbeat</div>
+    <div class="nav-item" onclick="showPanel('memory')"><span class="nav-icon">🧠</span> Memory</div>
+  </nav>
+  <div class="sidebar-footer">
+    <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)">
+      <span class="heartbeat-dot"></span> System Active
+    </div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:6px" id="uptimeDisplay">Uptime: —</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <h1 id="panelTitle">Dashboard</h1>
+    <div class="topbar-right">
+      <span class="badge badge-green" id="agentCountBadge">0 Agents Active</span>
+      <span class="badge badge-blue" id="heartbeatBadge">Heartbeat: —</span>
+      <button class="btn-sm btn-primary" onclick="showPanel('decisions')">+ Decision</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD PANEL -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="metrics-row">
+        <div class="metric-card"><div class="m-label">Active Agents</div><div class="m-val" id="m-agents">—</div><div class="m-sub">C-Suite members</div></div>
+        <div class="metric-card"><div class="m-label">Decisions Today</div><div class="m-val" id="m-decisions">0</div><div class="m-sub">executive decisions</div></div>
+        <div class="metric-card"><div class="m-label">Budget Used</div><div class="m-val" id="m-budget">$0</div><div class="m-sub" id="m-budget-limit">of —</div></div>
+        <div class="metric-card"><div class="m-label">Heartbeat</div><div class="m-val" id="m-heartbeat">—</div><div class="m-sub">wake interval</div></div>
+      </div>
+      <div class="section-title">C-Suite Overview</div>
+      <div class="agents-grid" id="dashAgentGrid"></div>
+      <div class="section-title">Recent Decisions</div>
+      <div class="card">
+        <table class="dec-table" id="recentDecTable">
+          <thead><tr><th>ID</th><th>Objective</th><th>Type</th><th>Status</th><th>Time</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AGENTS PANEL -->
+    <div class="panel" id="panel-agents">
+      <div class="section-title">C-Suite Agent Roster</div>
+      <div class="agents-grid" id="fullAgentGrid"></div>
+    </div>
+
+    <!-- DECISIONS PANEL -->
+    <div class="panel" id="panel-decisions">
+      <div class="dec-form">
+        <h3>Submit Decision for C-Suite Review</h3>
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1">
+            <label>Objective / Question</label>
+            <textarea id="dec-objective" placeholder="e.g. Should we expand to the US market in Q3?"></textarea>
+          </div>
+          <div class="form-field">
+            <label>Decision Type</label>
+            <select id="dec-type">
+              <option value="strategic">Strategic</option>
+              <option value="capital">Capital</option>
+              <option value="product">Product</option>
+              <option value="operational">Operational</option>
+              <option value="legal">Legal</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Time Horizon</label>
+            <select id="dec-horizon">
+              <option value="immediate">Immediate (24-48h)</option>
+              <option value="Q">This Quarter</option>
+              <option value="H">This Half</option>
+              <option value="Y">This Year</option>
+              <option value="3Y">3 Year</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Capital Involved</label>
+            <input type="text" id="dec-capital" placeholder="e.g. $50,000">
+          </div>
+          <div class="form-field">
+            <label>Reversibility</label>
+            <select id="dec-reversibility">
+              <option value="reversible">Reversible (Type 1)</option>
+              <option value="irreversible">Irreversible (Type 2)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-sm btn-primary" onclick="submitDecision()">Submit to C-Suite</button>
+      </div>
+      <div class="section-title">Decision Log</div>
+      <div class="card">
+        <table class="dec-table" id="fullDecTable">
+          <thead><tr><th>ID</th><th>Objective</th><th>Type</th><th>Capital</th><th>Status</th><th>Time</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ORG CHART PANEL -->
+    <div class="panel" id="panel-orgchart">
+      <div class="section-title">Authority Hierarchy</div>
+      <div class="card">
+        <div class="org-chart">
+          <div class="org-ceo" onclick="openAgentModal('CEO')">CEO AI<br><small style="font-weight:400;opacity:0.8">Final Authority</small></div>
+          <div class="org-connector"></div>
+          <div class="org-row" id="orgChartRow"><!-- populated by JS --></div>
+        </div>
+        <div style="margin-top:16px;font-size:0.78rem;color:var(--muted);display:flex;gap:20px;justify-content:center">
+          <span><span style="color:var(--red)">■</span> Veto Power (CRO, CFO, CLO)</span>
+          <span><span style="color:var(--accent)">■</span> Domain Authority</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GITHUB PANEL -->
+    <div class="panel" id="panel-github">
+      <div class="section-title">GitHub Integration</div>
+      <div class="gh-status-card">
+        <div class="gh-row"><span class="gh-label">Repository</span><span class="gh-val" id="gh-repo">—</span></div>
+        <div class="gh-row"><span class="gh-label">Status</span><span class="gh-val" id="gh-status"><span class="badge badge-yellow">Not Connected</span></span></div>
+        <div class="gh-row"><span class="gh-label">Last Push</span><span class="gh-val" id="gh-last-push">—</span></div>
+        <div class="gh-row">
+          <span class="gh-label">Actions</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn-sm btn-primary" onclick="githubPush()">Push to GitHub</button>
+            <button class="btn-sm btn-ghost" onclick="refreshGithub()">Refresh Status</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:20px" class="card">
+        <div class="section-title">Quick Setup</div>
+        <p style="font-size:0.85rem;color:var(--muted);line-height:1.7">
+          To connect your GitHub repository, run the following in your project root:<br><br>
+          <code style="background:var(--surface2);padding:8px 12px;border-radius:6px;display:block;font-family:monospace;font-size:0.82rem;margin-top:8px">
+            git remote add origin https://github.com/YOUR_USER/YOUR_REPO.git<br>
+            git push -u origin main
+          </code>
+        </p>
+      </div>
+    </div>
+
+    <!-- HEARTBEAT PANEL -->
+    <div class="panel" id="panel-heartbeat">
+      <div class="metrics-row" style="grid-template-columns:repeat(2,1fr)">
+        <div class="metric-card"><div class="m-label">Interval</div><div class="m-val" id="hb-interval">—</div></div>
+        <div class="metric-card"><div class="m-label">Total Beats</div><div class="m-val" id="hb-count">0</div></div>
+      </div>
+      <div class="section-title">Heartbeat Log</div>
+      <div class="hb-log" id="hbLog"><div style="color:var(--muted)">Waiting for first heartbeat...</div></div>
+    </div>
+
+    <!-- MEMORY PANEL -->
+    <div class="panel" id="panel-memory">
+      <div class="section-title">Agent Memory Files</div>
+      <div class="card">
+        <div class="section-title">SOUL.md</div>
+        <pre class="profile-md" id="soulMd">Loading...</pre>
+      </div>
+      <div class="card">
+        <div class="section-title">HEARTBEATS.md (last 20 lines)</div>
+        <pre class="profile-md" id="heartbeatsMd">Loading...</pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- AGENT MODAL -->
+<div class="modal-overlay" id="agentModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Agent Profile</h3>
+      <span class="modal-close" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-body">
+      <pre class="profile-md" id="modalContent">Loading...</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let agentData = [];
+let decisionData = [];
+let heartbeatData = [];
+
+// =============================================================================
+// NAVIGATION
+// =============================================================================
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + id)?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
+  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory' };
+  document.getElementById('panelTitle').textContent = titles[id] || id;
+  if (id === 'memory') loadMemory();
+  if (id === 'github') refreshGithub();
+}
+
+// =============================================================================
+// RENDER
+// =============================================================================
+function renderAgentTile(a, container) {
+  const tile = document.createElement('div');
+  tile.className = 'agent-tile';
+  tile.onclick = () => openAgentModal(a.id);
+  tile.innerHTML = `
+    <div class="at-id">${a.id}</div>
+    <div class="at-name">${a.title || a.id + ' AI'}</div>
+    <div class="at-persona">${a.persona || ''}</div>
+    <div class="at-status">
+      <span class="at-dot ${a.lastActive ? 'active' : 'idle'}"></span>
+      ${a.lastActive ? 'Active · ' + timeAgo(a.lastActive) : 'Idle'}
+    </div>
+  `;
+  container.appendChild(tile);
+}
+
+function renderAgents() {
+  const dashGrid = document.getElementById('dashAgentGrid');
+  const fullGrid = document.getElementById('fullAgentGrid');
+  dashGrid.innerHTML = ''; fullGrid.innerHTML = '';
+  agentData.forEach(a => { renderAgentTile(a, dashGrid); renderAgentTile(a, fullGrid); });
+  document.getElementById('m-agents').textContent = agentData.length;
+  document.getElementById('agentCountBadge').textContent = agentData.length + ' Agents Active';
+  renderOrgChart();
+}
+
+function renderOrgChart() {
+  const row = document.getElementById('orgChartRow');
+  row.innerHTML = '';
+  const vetoIds = ['CRO', 'CFO', 'CLO'];
+  agentData.filter(a => a.id !== 'CEO').forEach(a => {
+    const el = document.createElement('div');
+    el.className = 'org-agent' + (vetoIds.includes(a.id) ? ' org-veto' : '');
+    el.onclick = () => openAgentModal(a.id);
+    el.innerHTML = `<div class="oa-id">${a.id}</div><div style="font-size:0.72rem;color:var(--muted)">${(a.persona || '').replace('The ', '')}</div>`;
+    row.appendChild(el);
+  });
+}
+
+function renderDecisions(decisions, tableId) {
+  const tbody = document.querySelector('#' + tableId + ' tbody');
+  tbody.innerHTML = '';
+  decisions.forEach(d => {
+    const tr = document.createElement('tr');
+    const statusBadge = d.status === 'complete' ? 'badge-green' : d.status === 'processing' ? 'badge-yellow' : 'badge-blue';
+    tr.innerHTML = `
+      <td class="dec-id">${d.id}</td>
+      <td>${d.objective?.slice(0, 60) || '—'}${d.objective?.length > 60 ? '…' : ''}</td>
+      <td><span class="badge badge-blue">${d.type || '—'}</span></td>
+      ${tableId === 'fullDecTable' ? `<td>${d.capitalInvolved || '—'}</td>` : ''}
+      <td><span class="badge ${statusBadge}">${d.status || 'pending'}</span></td>
+      <td style="font-size:0.78rem;color:var(--muted)">${timeAgo(d.timestamp)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderHeartbeats() {
+  const log = document.getElementById('hbLog');
+  if (heartbeatData.length === 0) return;
+  log.innerHTML = heartbeatData.map(h =>
+    `<div class="hb-entry">▶ ${h.timestamp} | Agents: ${h.agents} | ${h.status}</div>`
+  ).join('');
+  document.getElementById('hb-count').textContent = heartbeatData.length;
+  log.scrollTop = log.scrollHeight;
+}
+
+// =============================================================================
+// AGENT MODAL
+// =============================================================================
+async function openAgentModal(id) {
+  document.getElementById('agentModal').classList.add('open');
+  document.getElementById('modalTitle').textContent = id + ' Agent Profile';
+  document.getElementById('modalContent').textContent = 'Loading...';
+  try {
+    const r = await fetch('/api/agents/' + id + '/profile');
+    const d = await r.json();
+    document.getElementById('modalContent').textContent = d.profile || 'Profile not found.';
+  } catch(e) { document.getElementById('modalContent').textContent = 'Error loading profile.'; }
+}
+function closeModal() { document.getElementById('agentModal').classList.remove('open'); }
+
+// =============================================================================
+// DECISION SUBMIT
+// =============================================================================
+async function submitDecision() {
+  const objective = document.getElementById('dec-objective').value.trim();
+  if (!objective) { alert('Please enter an objective.'); return; }
+  const body = {
+    objective,
+    type: document.getElementById('dec-type').value,
+    timeHorizon: document.getElementById('dec-horizon').value,
+    capitalInvolved: document.getElementById('dec-capital').value,
+    reversibility: document.getElementById('dec-reversibility').value,
+  };
+  try {
+    await fetch('/api/decisions', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    document.getElementById('dec-objective').value = '';
+    document.getElementById('dec-capital').value = '';
+  } catch(e) { alert('Error submitting decision: ' + e.message); }
+}
+
+// =============================================================================
+// GITHUB
+// =============================================================================
+async function refreshGithub() {
+  const r = await fetch('/api/github');
+  const d = await r.json();
+  document.getElementById('gh-repo').textContent = d.user && d.repo ? `${d.user}/${d.repo}` : 'Not configured';
+  document.getElementById('gh-status').innerHTML = d.connected ? '<span class="badge badge-green">Connected</span>' : '<span class="badge badge-yellow">Not Connected</span>';
+  document.getElementById('gh-last-push').textContent = d.lastPush ? timeAgo(d.lastPush) : '—';
+}
+async function githubPush() {
+  const btn = event.target;
+  btn.textContent = 'Pushing...'; btn.disabled = true;
+  const r = await fetch('/api/github/push', { method: 'POST' });
+  const d = await r.json();
+  btn.textContent = 'Push to GitHub'; btn.disabled = false;
+  refreshGithub();
+  alert(d.success ? 'Pushed successfully!' : 'Push failed: ' + d.output);
+}
+
+// =============================================================================
+// MEMORY
+// =============================================================================
+async function loadMemory() {
+  try {
+    const [soul, hb] = await Promise.all([
+      fetch('/api/memory/SOUL.md').then(r => r.json()),
+      fetch('/api/memory/HEARTBEATS.md').then(r => r.json()),
+    ]);
+    document.getElementById('soulMd').textContent = soul.content || 'Empty';
+    const lines = (hb.content || '').split('\n').filter(Boolean);
+    document.getElementById('heartbeatsMd').textContent = lines.slice(-20).join('\n') || 'No heartbeats yet';
+  } catch(e) {
+    document.getElementById('soulMd').textContent = 'File not found — run setup.sh to initialise.';
+    document.getElementById('heartbeatsMd').textContent = 'File not found.';
+  }
+}
+
+// =============================================================================
+// SOCKET EVENTS
+// =============================================================================
+socket.on('init', (data) => {
+  agentData = data.agents || [];
+  decisionData = data.decisions || [];
+  heartbeatData = data.heartbeats || [];
+  renderAgents();
+  renderDecisions(decisionData.slice(-10), 'recentDecTable');
+  renderDecisions(decisionData, 'fullDecTable');
+  renderHeartbeats();
+});
+
+socket.on('agents:update', (agents) => {
+  agentData = agents;
+  renderAgents();
+});
+
+socket.on('decision:new', (d) => {
+  decisionData.unshift(d);
+  renderDecisions(decisionData.slice(0, 10), 'recentDecTable');
+  renderDecisions(decisionData, 'fullDecTable');
+  document.getElementById('m-decisions').textContent = decisionData.filter(d => new Date(d.timestamp).toDateString() === new Date().toDateString()).length;
+});
+
+socket.on('decision:update', (d) => {
+  const idx = decisionData.findIndex(x => x.id === d.id);
+  if (idx >= 0) decisionData[idx] = d;
+  renderDecisions(decisionData.slice(0, 10), 'recentDecTable');
+  renderDecisions(decisionData, 'fullDecTable');
+});
+
+socket.on('heartbeat', (beat) => {
+  heartbeatData.push(beat);
+  document.getElementById('hb-count').textContent = heartbeatData.length;
+  renderHeartbeats();
+});
+
+// =============================================================================
+// STATUS FETCH
+// =============================================================================
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('companyLabel').textContent = d.company;
+    document.getElementById('m-heartbeat').textContent = d.heartbeat;
+    document.getElementById('heartbeatBadge').textContent = 'Heartbeat: ' + d.heartbeat;
+    document.getElementById('m-budget-limit').textContent = 'of ' + d.budget;
+    document.getElementById('hb-interval').textContent = d.heartbeat;
+    updateUptime(d.startTime);
+  } catch(e) {}
+}
+
+function updateUptime(startTime) {
+  if (!startTime) return;
+  const diff = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
+  const h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), s = diff % 60;
+  document.getElementById('uptimeDisplay').textContent = `Uptime: ${h}h ${m}m ${s}s`;
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+// Init
+loadStatus();
+setInterval(loadStatus, 30000);
+setInterval(() => {
+  const el = document.getElementById('uptimeDisplay');
+  if (el && el.textContent.startsWith('Uptime:')) loadStatus();
+}, 10000);
+</script>
+</body>
+</html>

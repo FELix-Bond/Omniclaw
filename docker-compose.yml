@@ -1,0 +1,73 @@
+version: "3.9"
+
+# =============================================================================
+# OmniClaw Docker Compose
+# Runs the full stack: Dashboard + NemoClaw sandbox + optional Supabase
+# Usage: docker-compose up -d
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Paperclip Dashboard
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: omniclaw-dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      - COMPANY_NAME=${COMPANY_NAME}
+      - OWNER_NAME=${OWNER_NAME}
+      - MISSION=${MISSION}
+      - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL}
+      - BUDGET_LIMIT=${BUDGET_LIMIT}
+      - VAULT_PATH=/vault
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+      - TG_TOKEN=${TG_TOKEN}
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - GITHUB_USER=${GITHUB_USER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - DECISION_MODE=${DECISION_MODE:-full}
+      - ESCALATION_THRESHOLD=${ESCALATION_THRESHOLD}
+    volumes:
+      - ./memory:/app/memory
+      - ./agents:/app/agents
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+      - ${VAULT_PATH:-~/vault}:/vault:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # NemoClaw Sandbox (OpenShell)
+  # Comment out if not using NVIDIA or Docker-based sandbox
+  # ---------------------------------------------------------------------------
+  nemoclaw:
+    image: nvcr.io/nvidia/nemo:24.01
+    container_name: omniclaw-nemoclaw
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./skills:/workspace/skills
+      - ./memory:/workspace/memory
+      - ./configs:/workspace/configs
+    command: ["sleep", "infinity"]  # Keep alive for exec
+    restart: unless-stopped
+    profiles:
+      - nvidia  # Only starts with: docker-compose --profile nvidia up
+
+volumes:
+  memory:
+  logs:

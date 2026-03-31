@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmniClaw — Zero-Human Company Configurator</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161922;
+    --surface2: #1e222d;
+    --border: #2a2f3d;
+    --accent: #5b8dee;
+    --accent2: #7c5cbf;
+    --green: #3dd68c;
+    --red: #e05c5c;
+    --yellow: #f0b429;
+    --text: #e2e8f0;
+    --muted: #7a8499;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  header {
+    background: linear-gradient(135deg, #0d0f14 0%, #1a1030 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 32px 48px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  header .logo { font-size: 2.2rem; }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+  .progress-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 48px;
+    display: flex; gap: 0; overflow-x: auto;
+  }
+  .step-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 20px; border-radius: 20px; font-size: 0.8rem;
+    color: var(--muted); cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .step-pill.active { background: var(--accent); color: #fff; }
+  .step-pill.done { color: var(--green); }
+  .step-pill .num { width: 20px; height: 20px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; }
+  .step-pill.active .num { background: rgba(255,255,255,0.2); }
+  .step-pill.done .num { background: var(--green); color: #000; }
+
+  main { max-width: 860px; margin: 0 auto; padding: 40px 24px 120px; }
+
+  .section { display: none; animation: fadeIn 0.3s ease; }
+  .section.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .section-header { margin-bottom: 28px; }
+  .section-header h2 { font-size: 1.5rem; font-weight: 700; }
+  .section-header p { color: var(--muted); margin-top: 6px; font-size: 0.9rem; line-height: 1.5; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; }
+  .card-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 600; margin-bottom: 16px; }
+
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 6px; }
+  label span { color: var(--muted); font-weight: 400; font-size: 0.78rem; margin-left: 6px; }
+  input[type="text"], input[type="password"], input[type="number"], select, textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 10px 14px; font-size: 0.9rem; font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  select option { background: var(--surface2); }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width: 600px) { .field-row { grid-template-columns: 1fr; } }
+
+  .toggle-group { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .toggle-group input[type="radio"] { display: none; }
+  .toggle-group label { flex: 1; text-align: center; padding: 9px 16px; font-size: 0.85rem; cursor: pointer; background: var(--surface2); border: none; margin: 0; transition: background 0.15s; }
+  .toggle-group input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
+
+  .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .agent-card {
+    background: var(--surface2); border: 2px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; cursor: pointer; transition: all 0.15s; position: relative;
+  }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card.selected { border-color: var(--accent); background: rgba(91,141,238,0.08); }
+  .agent-card input[type="checkbox"] { position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; accent-color: var(--accent); }
+  .agent-card .role { font-size: 0.75rem; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .agent-card .name { font-size: 0.95rem; font-weight: 600; margin-top: 2px; }
+  .agent-card .desc { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+  .info-box { background: rgba(91,141,238,0.08); border: 1px solid rgba(91,141,238,0.3); border-radius: 6px; padding: 12px 16px; font-size: 0.83rem; color: var(--muted); margin-bottom: 16px; }
+  .info-box strong { color: var(--accent); }
+
+  .warning-box { background: rgba(240,180,41,0.08); border: 1px solid rgba(240,180,41,0.3); border-radius: 6px; padding: 12px 16px; font-size: 0.83rem; color: var(--yellow); margin-bottom: 16px; }
+
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 16px 48px; display: flex; justify-content: space-between; align-items: center;
+    z-index: 100;
+  }
+  .btn { padding: 11px 28px; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4a7de0; }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-green:hover { background: #32c07a; }
+  .step-info { color: var(--muted); font-size: 0.85rem; }
+
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media(max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .summary-item .s-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .summary-item .s-val { font-size: 0.95rem; font-weight: 500; margin-top: 4px; word-break: break-all; }
+
+  .generate-btn-wrap { text-align: center; padding: 20px 0; }
+  .generate-btn-wrap .btn { padding: 16px 48px; font-size: 1rem; }
+
+  code { font-family: 'SF Mono', 'Fira Code', monospace; background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🦾</div>
+  <div>
+    <h1>OmniClaw Configurator</h1>
+    <p>Zero-Human Company Setup — Configure once, deploy anywhere.</p>
+  </div>
+</header>
+
+<div class="progress-bar" id="progressBar">
+  <div class="step-pill active" onclick="goToStep(0)"><span class="num">1</span> Company Identity</div>
+  <div class="step-pill" onclick="goToStep(1)"><span class="num">2</span> Infrastructure</div>
+  <div class="step-pill" onclick="goToStep(2)"><span class="num">3</span> C-Suite Agents</div>
+  <div class="step-pill" onclick="goToStep(3)"><span class="num">4</span> Integrations</div>
+  <div class="step-pill" onclick="goToStep(4)"><span class="num">5</span> GitHub & Deploy</div>
+  <div class="step-pill" onclick="goToStep(5)"><span class="num">6</span> Review & Generate</div>
+</div>
+
+<main>
+
+<!-- STEP 1: Company Identity -->
+<div class="section active" id="step-0">
+  <div class="section-header">
+    <h2>Company Identity</h2>
+    <p>Define the core identity of your Zero-Human Company. This becomes the "DNA" of every agent.</p>
+  </div>
+  <div class="card">
+    <div class="card-title">Core Identity</div>
+    <div class="field">
+      <label>Company Name <span>used as identifier across all systems</span></label>
+      <input type="text" id="companyName" placeholder="e.g. OmniGen_Systems" value="OmniGen_Systems">
+    </div>
+    <div class="field">
+      <label>Mission Statement <span>1–2 sentences — what this company actually does autonomously</span></label>
+      <textarea id="mission" placeholder="e.g. Automate cross-platform data synthesis, executive reporting, and capital allocation decisions for FELix."></textarea>
+    </div>
+    <div class="field">
+      <label>Owner / Founder Name <span>used in agent memory and reports</span></label>
+      <input type="text" id="ownerName" placeholder="e.g. Felix">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Primary Language</label>
+        <select id="primaryLang">
+          <option value="en-AU">English (AU)</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Timezone</label>
+        <input type="text" id="timezone" placeholder="e.g. Australia/Sydney" value="Australia/Sydney">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Heartbeat Schedule</div>
+    <div class="info-box"><strong>Heartbeat</strong> = how often agents wake up to check their task queue and execute autonomously.</div>
+    <div class="field">
+      <label>Agent Heartbeat Interval</label>
+      <select id="heartbeat">
+        <option value="5m">Every 5 minutes (High Activity)</option>
+        <option value="15m" selected>Every 15 minutes (Standard)</option>
+        <option value="30m">Every 30 minutes (Conservative)</option>
+        <option value="1h">Every hour (Minimal)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Budget Limit per Month</label>
+      <input type="text" id="budgetLimit" placeholder="e.g. $50" value="$50">
+    </div>
+  </div>
+</div>
+
+<!-- STEP 2: Infrastructure -->
+<div class="section" id="step-1">
+  <div class="section-header">
+    <h2>Infrastructure</h2>
+    <p>Where will this company run? Configure the target machine, runtime, and local paths.</p>
+  </div>
+  <div class="card">
+    <div class="card-title">Target Machine</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Host OS</label>
+        <select id="hostOS">
+          <option value="macos">macOS (Apple Silicon / Intel)</option>
+          <option value="linux">Linux (Ubuntu / Debian)</option>
+          <option value="windows">Windows (WSL2)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>GPU Available?</label>
+        <div class="toggle-group">
+          <input type="radio" name="gpu" id="gpuNo" value="none" checked><label for="gpuNo">None</label>
+          <input type="radio" name="gpu" id="gpuNvidia" value="nvidia"><label for="gpuNvidia">NVIDIA</label>
+          <input type="radio" name="gpu" id="gpuApple" value="apple"><label for="gpuApple">Apple</label>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Paperclip Dashboard Port <span>default 3000</span></label>
+      <input type="number" id="dashPort" value="3000" min="1024" max="65535">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Local Paths</div>
+    <div class="field">
+      <label>Obsidian Vault Path <span>absolute path on target machine</span></label>
+      <input type="text" id="vaultPath" placeholder="/Users/yourname/Documents/Vault">
+    </div>
+    <div class="field">
+      <label>Project Root Directory <span>where OmniClaw will be installed</span></label>
+      <input type="text" id="projectRoot" placeholder="/Users/yourname/omniclaw" value="~/omniclaw">
+    </div>
+    <div class="field">
+      <label>NemoClaw Runtime Version</label>
+      <select id="nemoVersion">
+        <option value="openshell-v4" selected>openshell-v4 (Recommended)</option>
+        <option value="openshell-v3">openshell-v3 (Stable)</option>
+        <option value="docker">Docker-only (No NVIDIA required)</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">AI Brain / Inference</div>
+    <div class="field">
+      <label>Local Inference Engine</label>
+      <select id="inferenceEngine">
+        <option value="turboquant-int4">Google TurboQuant INT4 (Fastest)</option>
+        <option value="ollama">Ollama (Open Source)</option>
+        <option value="lm-studio">LM Studio (GUI)</option>
+        <option value="cloud-only">Cloud Only (No local inference)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Primary Cloud Model</label>
+      <select id="cloudModel">
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6 (Powerful)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast)</option>
+        <option value="gpt-4o">GPT-4o (OpenAI)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 3: C-Suite Agents -->
+<div class="section" id="step-2">
+  <div class="section-header">
+    <h2>C-Suite Agents</h2>
+    <p>Select which executive agents to deploy. Each agent gets its own <code>.md</code> persona file and is registered in the Paperclip org chart.</p>
+  </div>
+  <div class="info-box"><strong>CEO AI</strong> is always deployed — it's the orchestrator. Select additional agents below.</div>
+  <div class="agent-grid" id="agentGrid">
+    <!-- populated by JS -->
+  </div>
+  <div class="card" style="margin-top:20px">
+    <div class="card-title">Decision Engine Mode</div>
+    <div class="field">
+      <label>Default Decision Mode</label>
+      <select id="decisionMode">
+        <option value="rapid">Mode 1 — Rapid (CEO + 2–3 agents)</option>
+        <option value="full" selected>Mode 2 — Full Committee (All agents)</option>
+        <option value="deep">Mode 3 — Deep Analysis (Iterative)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Escalation Capital Threshold <span>decisions above this trigger Full Committee</span></label>
+      <input type="text" id="escalationThreshold" placeholder="e.g. $10,000" value="$10,000">
+    </div>
+  </div>
+</div>
+
+<!-- STEP 4: Integrations -->
+<div class="section" id="step-3">
+  <div class="section-header">
+    <h2>Integrations & API Keys</h2>
+    <p>All keys are stored locally in your <code>.env</code> file — never committed to GitHub.</p>
+  </div>
+  <div class="warning-box">These values are processed entirely in your browser. Nothing is sent to any server.</div>
+  <div class="card">
+    <div class="card-title">Core AI APIs</div>
+    <div class="field">
+      <label>Anthropic API Key <span>for Claude models</span></label>
+      <input type="password" id="anthropicKey" placeholder="sk-ant-...">
+    </div>
+    <div class="field">
+      <label>Paperclip API Key <span>from paperclipai.net</span></label>
+      <input type="password" id="paperclipKey" placeholder="pcp-...">
+    </div>
+    <div class="field">
+      <label>Firecrawl API Key <span>for web intelligence</span></label>
+      <input type="password" id="firecrawlKey" placeholder="fc-...">
+    </div>
+    <div class="field">
+      <label>SkillsMP API Key <span>optional — for dynamic skill discovery</span></label>
+      <input type="password" id="skillsmpKey" placeholder="smp-...">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Communication Bridges (OpenCLI-rs)</div>
+    <div class="field">
+      <label>Telegram Bot Token</label>
+      <input type="password" id="tgToken" placeholder="1234567890:AAF...">
+    </div>
+    <div class="field">
+      <label>Discord Bot Token <span>optional</span></label>
+      <input type="password" id="discordToken" placeholder="MTI...">
+    </div>
+    <div class="field">
+      <label>Voicebox.io API Key <span>optional — for voice reports</span></label>
+      <input type="password" id="voiceboxKey" placeholder="vbx-...">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Data & Storage</div>
+    <div class="field">
+      <label>Supabase URL <span>optional — for persistent agent memory</span></label>
+      <input type="text" id="supabaseUrl" placeholder="https://xxx.supabase.co">
+    </div>
+    <div class="field">
+      <label>Supabase Anon Key</label>
+      <input type="password" id="supabaseKey" placeholder="eyJ...">
+    </div>
+    <div class="field">
+      <label>Google Docs Folder ID <span>optional — for report output</span></label>
+      <input type="text" id="googleDocsId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+    </div>
+  </div>
+</div>
+
+<!-- STEP 5: GitHub -->
+<div class="section" id="step-4">
+  <div class="section-header">
+    <h2>GitHub & Deployment</h2>
+    <p>Connect your GitHub account to auto-create the repository and enable CI/CD workflows.</p>
+  </div>
+  <div class="card">
+    <div class="card-title">GitHub Repository</div>
+    <div class="field">
+      <label>GitHub Username</label>
+      <input type="text" id="githubUser" placeholder="your-github-username">
+    </div>
+    <div class="field">
+      <label>Repository Name</label>
+      <input type="text" id="githubRepo" placeholder="omniclaw-bootstrap" value="omniclaw-bootstrap">
+    </div>
+    <div class="field">
+      <label>GitHub Personal Access Token <span>needs repo + workflow scopes</span></label>
+      <input type="password" id="githubToken" placeholder="ghp_...">
+    </div>
+    <div class="field">
+      <label>Repository Visibility</label>
+      <div class="toggle-group">
+        <input type="radio" name="repoVis" id="repoPrivate" value="private" checked><label for="repoPrivate">Private</label>
+        <input type="radio" name="repoVis" id="repoPublic" value="public"><label for="repoPublic">Public</label>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Deployment Method</div>
+    <div class="field">
+      <label>How to deploy to target machine?</label>
+      <select id="deployMethod">
+        <option value="script">Single Shell Script (Recommended)</option>
+        <option value="docker">Docker Compose</option>
+        <option value="curl">Curl One-Liner</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Auto-open Dashboard on Startup?</label>
+      <div class="toggle-group">
+        <input type="radio" name="autoOpen" id="autoOpenYes" value="true" checked><label for="autoOpenYes">Yes</label>
+        <input type="radio" name="autoOpen" id="autoOpenNo" value="false"><label for="autoOpenNo">No</label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 6: Review & Generate -->
+<div class="section" id="step-5">
+  <div class="section-header">
+    <h2>Review & Generate</h2>
+    <p>Everything looks good. Click generate to download your complete, pre-configured deploy package.</p>
+  </div>
+  <div id="summaryContent"></div>
+  <div class="generate-btn-wrap">
+    <button class="btn btn-green" onclick="generatePackage()">Generate Deploy Package</button>
+    <p style="color:var(--muted);font-size:0.82rem;margin-top:12px;">Downloads a pre-configured <code>deploy-omniclaw.sh</code> — copy it to your target machine and run it.</p>
+  </div>
+  <div id="generatedOutput" style="display:none">
+    <div class="card">
+      <div class="card-title">Generated Files</div>
+      <p style="color:var(--muted);font-size:0.87rem;margin-bottom:16px;">The following files have been generated and downloaded to your machine:</p>
+      <ul id="fileList" style="list-style:none;padding:0;display:grid;gap:8px;"></ul>
+    </div>
+    <div class="card">
+      <div class="card-title">Next Steps</div>
+      <ol style="padding-left:20px;line-height:2;font-size:0.9rem;color:var(--muted);">
+        <li>Copy <code>deploy-omniclaw.sh</code> to your target machine</li>
+        <li>Run: <code id="deployCmd">chmod +x deploy-omniclaw.sh && ./deploy-omniclaw.sh</code></li>
+        <li>Open <code id="dashUrl">http://localhost:3000</code> in your browser</li>
+        <li>Push the generated files to GitHub: <code id="ghCmd">git remote add origin https://github.com/USER/REPO.git && git push -u origin main</code></li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div class="bottom-bar">
+  <button class="btn btn-ghost" id="btnBack" onclick="prevStep()" style="display:none">Back</button>
+  <span class="step-info" id="stepInfo">Step 1 of 6</span>
+  <button class="btn btn-primary" id="btnNext" onclick="nextStep()">Continue</button>
+</div>
+
+<script>
+const AGENTS = [
+  { id: 'CEO', name: 'CEO AI', title: 'Chief Executive Officer', desc: 'The Operator — ultimate decision-maker', always: true },
+  { id: 'CFO', name: 'CFO AI', title: 'Chief Financial Officer', desc: 'The Capital Allocator — financial strategy' },
+  { id: 'COO', name: 'COO AI', title: 'Chief Operating Officer', desc: 'The Executor — operations & delivery' },
+  { id: 'CTO', name: 'CTO AI', title: 'Chief Technology Officer', desc: 'The Architect — systems & technical execution' },
+  { id: 'CSO', name: 'CSO AI', title: 'Chief Strategy Officer', desc: 'The Strategist — long-term positioning' },
+  { id: 'CRO', name: 'CRO AI', title: 'Chief Risk Officer', desc: 'The Protector — risk & downside' },
+  { id: 'CIO', name: 'CIO AI', title: 'Chief Information Officer', desc: 'The Intelligence Layer — data & analytics' },
+  { id: 'CPO', name: 'CPO AI', title: 'Chief Product Officer', desc: 'The Builder — product & UX' },
+  { id: 'CHRO', name: 'CHRO AI', title: 'Chief HR Officer', desc: 'The Culture Builder — talent & org' },
+  { id: 'CLO', name: 'CLO AI', title: 'Chief Legal Officer', desc: 'The Guardian — legal & compliance' },
+];
+
+let currentStep = 0;
+const totalSteps = 6;
+const selectedAgents = new Set(['CEO', 'CFO', 'COO', 'CTO', 'CSO', 'CRO', 'CIO', 'CPO', 'CHRO', 'CLO']);
+
+function initAgentGrid() {
+  const grid = document.getElementById('agentGrid');
+  grid.innerHTML = '';
+  AGENTS.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'agent-card' + (selectedAgents.has(a.id) ? ' selected' : '') + (a.always ? ' always' : '');
+    card.onclick = () => {
+      if (a.always) return;
+      if (selectedAgents.has(a.id)) { selectedAgents.delete(a.id); card.classList.remove('selected'); card.querySelector('input').checked = false; }
+      else { selectedAgents.add(a.id); card.classList.add('selected'); card.querySelector('input').checked = true; }
+    };
+    card.innerHTML = `
+      <div class="role">${a.id}</div>
+      <div class="name">${a.name}</div>
+      <div class="desc">${a.desc}</div>
+      <input type="checkbox" ${selectedAgents.has(a.id) ? 'checked' : ''} ${a.always ? 'disabled' : ''}>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function goToStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  document.querySelectorAll('.step-pill')[currentStep].classList.remove('active');
+  document.querySelectorAll('.step-pill')[currentStep].classList.add('done');
+  currentStep = n;
+  document.getElementById('step-' + currentStep).classList.add('active');
+  document.querySelectorAll('.step-pill').forEach((p, i) => {
+    p.classList.remove('active');
+    if (i === currentStep) p.classList.add('active');
+  });
+  document.getElementById('stepInfo').textContent = `Step ${currentStep + 1} of ${totalSteps}`;
+  document.getElementById('btnBack').style.display = currentStep > 0 ? '' : 'none';
+  document.getElementById('btnNext').textContent = currentStep === totalSteps - 1 ? 'Generate' : 'Continue';
+  if (currentStep === 5) buildSummary();
+}
+
+function nextStep() {
+  if (currentStep === totalSteps - 1) { generatePackage(); return; }
+  goToStep(currentStep + 1);
+}
+function prevStep() { if (currentStep > 0) goToStep(currentStep - 1); }
+
+function val(id) { return (document.getElementById(id)?.value || '').trim(); }
+function radioVal(name) { return document.querySelector(`input[name="${name}"]:checked`)?.value || ''; }
+
+function buildSummary() {
+  const agents = [...selectedAgents].join(', ');
+  document.getElementById('summaryContent').innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-item"><div class="s-label">Company Name</div><div class="s-val">${val('companyName') || '—'}</div></div>
+      <div class="summary-item"><div class="s-label">Owner</div><div class="s-val">${val('ownerName') || '—'}</div></div>
+      <div class="summary-item"><div class="s-label">Heartbeat</div><div class="s-val">${val('heartbeat')}</div></div>
+      <div class="summary-item"><div class="s-label">Budget Limit</div><div class="s-val">${val('budgetLimit') || '—'}</div></div>
+      <div class="summary-item"><div class="s-label">Host OS</div><div class="s-val">${val('hostOS')}</div></div>
+      <div class="summary-item"><div class="s-label">Dashboard Port</div><div class="s-val">${val('dashPort')}</div></div>
+      <div class="summary-item"><div class="s-label">Vault Path</div><div class="s-val">${val('vaultPath') || '—'}</div></div>
+      <div class="summary-item"><div class="s-label">Inference Engine</div><div class="s-val">${val('inferenceEngine')}</div></div>
+      <div class="summary-item"><div class="s-label">C-Suite Agents (${selectedAgents.size})</div><div class="s-val">${agents}</div></div>
+      <div class="summary-item"><div class="s-label">Deploy Method</div><div class="s-val">${val('deployMethod')}</div></div>
+      <div class="summary-item"><div class="s-label">GitHub Repo</div><div class="s-val">${val('githubUser')}/${val('githubRepo') || '—'}</div></div>
+      <div class="summary-item"><div class="s-label">Cloud Model</div><div class="s-val">${val('cloudModel')}</div></div>
+    </div>
+  `;
+}
+
+function generatePackage() {
+  const cfg = {
+    companyName: val('companyName') || 'OmniGen_Systems',
+    mission: val('mission') || 'Automate cross-platform intelligence and executive decision-making.',
+    ownerName: val('ownerName') || 'Felix',
+    timezone: val('timezone') || 'Australia/Sydney',
+    heartbeat: val('heartbeat') || '15m',
+    budgetLimit: val('budgetLimit') || '$50',
+    hostOS: val('hostOS') || 'macos',
+    dashPort: val('dashPort') || '3000',
+    vaultPath: val('vaultPath') || '~/vault',
+    projectRoot: val('projectRoot') || '~/omniclaw',
+    nemoVersion: val('nemoVersion') || 'openshell-v4',
+    inferenceEngine: val('inferenceEngine') || 'turboquant-int4',
+    cloudModel: val('cloudModel') || 'claude-sonnet-4-6',
+    anthropicKey: val('anthropicKey'),
+    paperclipKey: val('paperclipKey'),
+    firecrawlKey: val('firecrawlKey'),
+    skillsmpKey: val('skillsmpKey'),
+    tgToken: val('tgToken'),
+    discordToken: val('discordToken'),
+    voiceboxKey: val('voiceboxKey'),
+    supabaseUrl: val('supabaseUrl'),
+    supabaseKey: val('supabaseKey'),
+    googleDocsId: val('googleDocsId'),
+    githubUser: val('githubUser'),
+    githubRepo: val('githubRepo') || 'omniclaw-bootstrap',
+    githubToken: val('githubToken'),
+    repoVisibility: radioVal('repoVis') || 'private',
+    deployMethod: val('deployMethod') || 'script',
+    agents: [...selectedAgents],
+    decisionMode: val('decisionMode') || 'full',
+    escalationThreshold: val('escalationThreshold') || '$10,000',
+    autoOpen: radioVal('autoOpen') || 'true',
+  };
+
+  const deployScript = generateDeployScript(cfg);
+  download('deploy-omniclaw.sh', deployScript);
+
+  const envFile = generateEnvFile(cfg);
+  download('.env.example', envFile);
+
+  const yaml = generateYaml(cfg);
+  download('init-company.yaml', yaml);
+
+  // Show results
+  document.getElementById('generatedOutput').style.display = '';
+  document.getElementById('fileList').innerHTML = [
+    'deploy-omniclaw.sh — Master deployment script (run on target machine)',
+    '.env.example — Pre-filled environment template',
+    'init-company.yaml — Company manifest',
+  ].map(f => `<li style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:0.85rem;color:var(--muted)">✅ ${f}</li>`).join('');
+  document.getElementById('dashUrl').textContent = `http://localhost:${cfg.dashPort}`;
+  document.getElementById('ghCmd').textContent = `git remote add origin https://github.com/${cfg.githubUser}/${cfg.githubRepo}.git && git push -u origin main`;
+}
+
+function generateDeployScript(c) {
+  const agentList = c.agents.map(a => `"${a}"`).join(' ');
+  return `#!/bin/bash
+# =============================================================================
+# OMNICLAW — Zero-Human Company Master Deployment Script
+# Auto-generated by OmniClaw Configurator
+# Company: ${c.companyName} | Owner: ${c.ownerName}
+# Generated: ${new Date().toISOString()}
+# =============================================================================
+
+set -e
+GREEN='\\033[0;32m'; BLUE='\\033[0;34m'; RED='\\033[0;31m'; YELLOW='\\033[1;33m'; NC='\\033[0m'
+
+COMPANY_NAME="${c.companyName}"
+PROJECT_ROOT="${c.projectRoot}"
+DASH_PORT="${c.dashPort}"
+VAULT_PATH="${c.vaultPath}"
+AGENTS=(${agentList})
+HOST_OS="${c.hostOS}"
+
+echo -e "\${BLUE}🦾 OmniClaw Initialization — \${COMPANY_NAME}\${NC}"
+echo -e "\${BLUE}=========================================\${NC}"
+
+# --- 1. Preflight Checks ---
+echo -e "\\n\${GREEN}[1/7] Preflight checks...\${NC}"
+fail() { echo -e "\${RED}✗ \$1\${NC}" >&2; exit 1; }
+check() { command -v "\$1" >/dev/null 2>&1 || fail "\$1 is required. Install it and retry."; echo -e "  ✓ \$1"; }
+check git; check node; check npm
+[ "\$HOST_OS" = "macos" ] && check brew || true
+command -v cargo >/dev/null 2>&1 && echo "  ✓ cargo (Rust)" || echo -e "  \${YELLOW}⚠ Rust not found — OpenCLI-rs will be skipped\${NC}"
+
+# --- 2. Project Directory ---
+echo -e "\\n\${GREEN}[2/7] Setting up project directory...\${NC}"
+mkdir -p "\$PROJECT_ROOT"
+cd "\$PROJECT_ROOT"
+echo "  ✓ Project root: \$PROJECT_ROOT"
+
+# --- 3. Write .env file ---
+echo -e "\\n\${GREEN}[3/7] Writing environment configuration...\${NC}"
+if [ -f ".env" ]; then
+  echo -e "  \${YELLOW}⚠ .env already exists — backing up to .env.bak\${NC}"
+  cp .env .env.bak
+fi
+cat > .env << 'ENVEOF'
+# =============================================================================
+# OMNICLAW ENVIRONMENT — ${c.companyName}
+# =============================================================================
+COMPANY_NAME="${c.companyName}"
+OWNER_NAME="${c.ownerName}"
+MISSION="${c.mission}"
+TIMEZONE="${c.timezone}"
+HEARTBEAT_INTERVAL="${c.heartbeat}"
+BUDGET_LIMIT="${c.budgetLimit}"
+DASHBOARD_PORT=${c.dashPort}
+VAULT_PATH="${c.vaultPath}"
+PROJECT_ROOT="${c.projectRoot}"
+NEMOCLAW_RUNTIME="${c.nemoVersion}"
+INFERENCE_ENGINE="${c.inferenceEngine}"
+CLOUD_MODEL="${c.cloudModel}"
+DECISION_MODE="${c.decisionMode}"
+ESCALATION_THRESHOLD="${c.escalationThreshold}"
+AUTO_OPEN_DASHBOARD="${c.autoOpen}"
+GITHUB_USER="${c.githubUser}"
+GITHUB_REPO="${c.githubRepo}"
+REPO_VISIBILITY="${c.repoVisibility}"
+
+# API Keys
+ANTHROPIC_API_KEY="${c.anthropicKey}"
+PAPERCLIP_API_KEY="${c.paperclipKey}"
+FIRECRAWL_API_KEY="${c.firecrawlKey}"
+SKILLSMP_API_KEY="${c.skillsmpKey}"
+TG_TOKEN="${c.tgToken}"
+DISCORD_TOKEN="${c.discordToken}"
+VOICEBOX_API_KEY="${c.voiceboxKey}"
+SUPABASE_URL="${c.supabaseUrl}"
+SUPABASE_KEY="${c.supabaseKey}"
+GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
+ENVEOF
+echo "  ✓ .env written"
+
+# --- 4. Clone OmniClaw Bootstrap Repo ---
+echo -e "\\n\${GREEN}[4/7] Cloning OmniClaw bootstrap repository...\${NC}"
+if [ -d ".git" ]; then
+  echo "  ✓ Git repo already exists, pulling latest..."
+  git pull origin main 2>/dev/null || true
+else
+  if [ -n "${c.githubUser}" ] && [ -n "${c.githubRepo}" ]; then
+    git clone "https://github.com/${c.githubUser}/${c.githubRepo}.git" . 2>/dev/null || {
+      echo -e "  \${YELLOW}⚠ Repo not yet created — initializing fresh git repo\${NC}"
+      git init
+    }
+  else
+    git init
+  fi
+fi
+
+# --- 5. Install Dependencies ---
+echo -e "\\n\${GREEN}[5/7] Installing dependencies...\${NC}"
+mkdir -p configs agents/csuite memory skills dashboard
+
+# Install dashboard dependencies
+if [ -f "dashboard/package.json" ]; then
+  cd dashboard && npm install --silent && cd ..
+  echo "  ✓ Dashboard dependencies installed"
+else
+  echo '{"name":"omniclaw-dashboard","version":"1.0.0","dependencies":{"express":"^4.18","socket.io":"^4.6","dotenv":"^16.0","js-yaml":"^4.1","node-cron":"^3.0","axios":"^1.4"}}' > dashboard/package.json
+  cd dashboard && npm install --silent && cd ..
+  echo "  ✓ Dashboard dependencies installed"
+fi
+
+# SkillsMP CLI
+npm install -g @skillsmp/cli 2>/dev/null && echo "  ✓ SkillsMP CLI installed" || echo -e "  \${YELLOW}⚠ SkillsMP CLI install failed (non-fatal)\${NC}"
+
+# Pre-install core skills
+npx skills add openclaw/self-improvement 2>/dev/null && echo "  ✓ Skill: self-improvement" || true
+npx skills add diegosouzapw/ai-engineer 2>/dev/null && echo "  ✓ Skill: ai-engineer" || true
+npx skills add bcastelino/ai-product 2>/dev/null && echo "  ✓ Skill: ai-product" || true
+
+# Clone Superpowers
+if [ ! -d "skills/superpowers" ]; then
+  git clone https://github.com/obra/superpowers.git skills/superpowers --depth=1 --quiet
+  echo "  ✓ Superpowers cloned"
+fi
+
+# OpenCLI-rs (if Rust available)
+if command -v cargo >/dev/null 2>&1; then
+  if [ ! -d "skills/opencli-rs" ]; then
+    git clone https://github.com/nashsu/opencli-rs-skill.git skills/opencli-rs --depth=1 --quiet
+    cd skills/opencli-rs && cargo build --release --quiet && cd ../..
+    echo "  ✓ OpenCLI-rs compiled"
+  fi
+fi
+
+# --- 6. Create C-Suite Agent Files ---
+echo -e "\\n\${GREEN}[6/7] Provisioning C-Suite agents...\${NC}"
+source .env
+bash agents/create-csuite.sh
+echo "  ✓ C-Suite agents provisioned: \${AGENTS[*]}"
+
+# --- 7. Launch Dashboard ---
+echo -e "\\n\${GREEN}[7/7] Launching Paperclip Dashboard...\${NC}"
+node dashboard/server.js &
+DASH_PID=\$!
+sleep 2
+
+if kill -0 \$DASH_PID 2>/dev/null; then
+  echo "  ✓ Dashboard running (PID \$DASH_PID)"
+  echo \$DASH_PID > .dashboard.pid
+else
+  echo -e "  \${RED}✗ Dashboard failed to start — check dashboard/server.js\${NC}"
+fi
+
+echo -e "\\n\${GREEN}============================================\${NC}"
+echo -e "\${GREEN}✅  \${COMPANY_NAME} is live.\${NC}"
+echo -e "  Dashboard:  http://localhost:\$DASH_PORT"
+echo -e "  Agents:     \${#AGENTS[@]} C-Suite members active"
+echo -e "  Heartbeat:  ${c.heartbeat}"
+echo -e "  Vault:      \$VAULT_PATH"
+echo -e "\${GREEN}============================================\${NC}"
+
+[ "\${AUTO_OPEN_DASHBOARD}" = "true" ] && {
+  command -v open >/dev/null && open "http://localhost:\$DASH_PORT" || \\
+  command -v xdg-open >/dev/null && xdg-open "http://localhost:\$DASH_PORT" || true
+}
+`;
+}
+
+function generateEnvFile(c) {
+  return `# OmniClaw Environment — ${c.companyName}
+# Generated: ${new Date().toISOString()}
+COMPANY_NAME="${c.companyName}"
+OWNER_NAME="${c.ownerName}"
+MISSION="${c.mission}"
+TIMEZONE="${c.timezone}"
+HEARTBEAT_INTERVAL="${c.heartbeat}"
+BUDGET_LIMIT="${c.budgetLimit}"
+DASHBOARD_PORT=${c.dashPort}
+VAULT_PATH="${c.vaultPath}"
+PROJECT_ROOT="${c.projectRoot}"
+CLOUD_MODEL="${c.cloudModel}"
+ANTHROPIC_API_KEY="${c.anthropicKey}"
+PAPERCLIP_API_KEY="${c.paperclipKey}"
+FIRECRAWL_API_KEY="${c.firecrawlKey}"
+TG_TOKEN="${c.tgToken}"
+SUPABASE_URL="${c.supabaseUrl}"
+SUPABASE_KEY="${c.supabaseKey}"
+GITHUB_USER="${c.githubUser}"
+GITHUB_REPO="${c.githubRepo}"
+`;
+}
+
+function generateYaml(c) {
+  const agentBlocks = c.agents.map(a => `  - role: "${a}_Agent"\n    framework: "OpenClaw"\n    memory: "obsidian-vault-link"\n    skills: ["superpowers-core", "firecrawl-intel"]\n    budget_limit: "${c.budgetLimit}/mo"`).join('\n');
+  return `# OmniClaw Company Manifest
+# Company: ${c.companyName}
+# Generated: ${new Date().toISOString()}
+
+company_name: "${c.companyName}"
+owner: "${c.ownerName}"
+mission: "${c.mission}"
+timezone: "${c.timezone}"
+
+orchestration:
+  platform: "paperclip-ai"
+  dashboard_port: ${c.dashPort}
+  heartbeat_interval: "${c.heartbeat}"
+  decision_mode: "${c.decisionMode}"
+  escalation_threshold: "${c.escalationThreshold}"
+
+infrastructure:
+  host_os: "${c.hostOS}"
+  runtime: "${c.nemoVersion}"
+  brain: "${c.inferenceEngine}"
+  cloud_model: "${c.cloudModel}"
+
+agents:
+${agentBlocks}
+
+integrations:
+  knowledge_base:
+    type: "Obsidian"
+    path: "\${VAULT_PATH}"
+  voice_comms:
+    provider: "voicebox.io"
+    auto_report: true
+  communication_bridges:
+    - telegram
+    - discord
+
+capabilities:
+  managed_skills:
+    - source: "github:obra/superpowers"
+    - source: "skillsmp:openclaw/self-improvement"
+    - source: "skillsmp:mcp-server-builder"
+  dynamic_discovery:
+    enabled: true
+    provider: "skillsmp.com"
+    auto_install_policy: "ask_permission"
+`;
+}
+
+function download(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Init
+initAgentGrid();
+document.getElementById('stepInfo').textContent = `Step 1 of ${totalSteps}`;
+</script>
+</body>
+</html>
