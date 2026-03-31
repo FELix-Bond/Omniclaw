@@ -127,6 +127,21 @@
   .generate-btn-wrap .btn { padding: 16px 48px; font-size: 1rem; }
 
   code { font-family: 'SF Mono', 'Fira Code', monospace; background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+
+  .badge-free { background: rgba(61,214,140,0.18); color: var(--green); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.04em; }
+  .badge-paid { background: rgba(240,180,41,0.15); color: var(--yellow); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+
+  .model-chain { display: flex; flex-direction: column; gap: 10px; }
+  .chain-slot { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+  .chain-slot .slot-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+  .chain-slot:nth-child(1) .slot-num { background: var(--accent); color: #fff; }
+  .chain-slot:nth-child(2) .slot-num { background: var(--yellow); color: #000; }
+  .chain-slot:nth-child(3) .slot-num { background: var(--muted); color: #fff; }
+  .chain-slot select { flex: 1; background: var(--surface); }
+  .chain-label { font-size: 0.72rem; color: var(--muted); width: 68px; flex-shrink: 0; }
+  .chain-arrow { color: var(--muted); font-size: 0.9rem; text-align: center; padding: 2px 0; }
+  .trigger-info { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 0.78rem; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+  .trigger-info strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -314,43 +329,83 @@
     </div>
   </div>
   <div class="card">
-    <div class="card-title">AI Brain / Inference</div>
-    <div class="field">
-      <label>Local Inference Engine</label>
-      <select id="inferenceEngine">
-        <option value="turboquant-int4">Google TurboQuant INT4 (Fastest)</option>
-        <option value="ollama">Ollama (Open Source)</option>
-        <option value="lm-studio">LM Studio (GUI)</option>
-        <option value="cloud-only">Cloud Only (No local inference)</option>
-      </select>
+    <div class="card-title">AI Model Fallback Chain</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Set your primary model and up to 2 automatic backups. If a model hits a rate limit or runs out of credits, the system silently switches to the next one.</p>
+
+    <div class="model-chain">
+      <div class="chain-slot">
+        <span class="slot-num">1</span>
+        <span class="chain-label">Primary</span>
+        <select id="model1" onchange="updateApiKeyFields()">
+          <optgroup label="— FREE TIER —">
+            <option value="ollama::llama3.1" data-provider="ollama" data-free="true">🟢 Ollama / Llama 3.1 (Local — FREE forever)</option>
+            <option value="groq::llama-3.1-70b-versatile" data-provider="groq" data-free="true">🟢 Groq / Llama 3.1 70B (Cloud — FREE tier)</option>
+            <option value="groq::mixtral-8x7b-32768" data-provider="groq" data-free="true">🟢 Groq / Mixtral 8x7B (Cloud — FREE tier)</option>
+            <option value="gemini::gemini-2.0-flash" data-provider="google" data-free="true">🟢 Google / Gemini 2.0 Flash (FREE tier)</option>
+            <option value="openrouter::meta-llama/llama-3.1-405b" data-provider="openrouter" data-free="true">🟢 OpenRouter / Llama 3.1 405B (FREE)</option>
+            <option value="minimax::abab6.5s" data-provider="minimax" data-free="true">🟢 MiniMax ABAB 6.5s (FREE credits)</option>
+          </optgroup>
+          <optgroup label="— PAID —">
+            <option value="anthropic::claude-sonnet-4-6" data-provider="anthropic">Claude Sonnet 4.6</option>
+            <option value="anthropic::claude-opus-4-6" data-provider="anthropic">Claude Opus 4.6</option>
+            <option value="anthropic::claude-haiku-4-5" data-provider="anthropic">Claude Haiku 4.5</option>
+            <option value="openai::gpt-4o" data-provider="openai">GPT-4o</option>
+            <option value="openai::gpt-4o-mini" data-provider="openai">GPT-4o Mini</option>
+            <option value="minimax::abab6.5" data-provider="minimax">MiniMax ABAB 6.5</option>
+            <option value="minimax::text-01" data-provider="minimax">MiniMax Text-01</option>
+            <option value="mistral::mistral-large" data-provider="mistral">Mistral Large</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="chain-arrow">↓ fallback if rate limited or credits exhausted</div>
+
+      <div class="chain-slot">
+        <span class="slot-num">2</span>
+        <span class="chain-label">Backup 1</span>
+        <select id="model2" onchange="updateApiKeyFields()">
+          <option value="none">— None —</option>
+          <optgroup label="— FREE TIER —">
+            <option value="ollama::llama3.1" data-provider="ollama" data-free="true">🟢 Ollama / Llama 3.1 (Local — FREE forever)</option>
+            <option value="groq::llama-3.1-70b-versatile" data-provider="groq" data-free="true" selected>🟢 Groq / Llama 3.1 70B (Cloud — FREE tier)</option>
+            <option value="groq::mixtral-8x7b-32768" data-provider="groq" data-free="true">🟢 Groq / Mixtral 8x7B (Cloud — FREE tier)</option>
+            <option value="gemini::gemini-2.0-flash" data-provider="google" data-free="true">🟢 Google / Gemini 2.0 Flash (FREE tier)</option>
+            <option value="openrouter::meta-llama/llama-3.1-405b" data-provider="openrouter" data-free="true">🟢 OpenRouter / Llama 3.1 405B (FREE)</option>
+            <option value="minimax::abab6.5s" data-provider="minimax" data-free="true">🟢 MiniMax ABAB 6.5s (FREE credits)</option>
+          </optgroup>
+          <optgroup label="— PAID —">
+            <option value="anthropic::claude-sonnet-4-6" data-provider="anthropic">Claude Sonnet 4.6</option>
+            <option value="openai::gpt-4o-mini" data-provider="openai">GPT-4o Mini</option>
+            <option value="mistral::mistral-large" data-provider="mistral">Mistral Large</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="chain-arrow">↓ fallback if backup 1 also fails</div>
+
+      <div class="chain-slot">
+        <span class="slot-num">3</span>
+        <span class="chain-label">Backup 2</span>
+        <select id="model3" onchange="updateApiKeyFields()">
+          <option value="none">— None —</option>
+          <optgroup label="— FREE TIER —">
+            <option value="ollama::llama3.1" data-provider="ollama" data-free="true">🟢 Ollama / Llama 3.1 (Local — FREE forever)</option>
+            <option value="groq::llama-3.1-70b-versatile" data-provider="groq" data-free="true">🟢 Groq / Llama 3.1 70B (Cloud — FREE tier)</option>
+            <option value="gemini::gemini-2.0-flash" data-provider="google" data-free="true" selected>🟢 Google / Gemini 2.0 Flash (FREE tier)</option>
+            <option value="openrouter::meta-llama/llama-3.1-405b" data-provider="openrouter" data-free="true">🟢 OpenRouter / Llama 3.1 405B (FREE)</option>
+            <option value="minimax::abab6.5s" data-provider="minimax" data-free="true">🟢 MiniMax ABAB 6.5s (FREE credits)</option>
+          </optgroup>
+          <optgroup label="— PAID —">
+            <option value="anthropic::claude-haiku-4-5" data-provider="anthropic">Claude Haiku 4.5</option>
+            <option value="openai::gpt-4o-mini" data-provider="openai">GPT-4o Mini</option>
+          </optgroup>
+        </select>
+      </div>
     </div>
-    <div class="field">
-      <label>Primary Cloud Model</label>
-      <select id="cloudModel" onchange="updateApiKeyFields()">
-        <optgroup label="Anthropic (Claude)">
-          <option value="claude-sonnet-4-6" data-provider="anthropic">Claude Sonnet 4.6 (Recommended)</option>
-          <option value="claude-opus-4-6" data-provider="anthropic">Claude Opus 4.6 (Powerful)</option>
-          <option value="claude-haiku-4-5" data-provider="anthropic">Claude Haiku 4.5 (Fast)</option>
-        </optgroup>
-        <optgroup label="Google">
-          <option value="gemini-2.0-flash" data-provider="google">Gemini 2.0 Flash (Fast)</option>
-          <option value="gemini-1.5-pro" data-provider="google">Gemini 1.5 Pro</option>
-        </optgroup>
-        <optgroup label="OpenAI">
-          <option value="gpt-4o" data-provider="openai">GPT-4o</option>
-          <option value="gpt-4o-mini" data-provider="openai">GPT-4o Mini (Fast)</option>
-          <option value="o3-mini" data-provider="openai">o3 Mini (Reasoning)</option>
-        </optgroup>
-        <optgroup label="Minimax">
-          <option value="minimax-abab6.5s" data-provider="minimax">MiniMax ABAB 6.5s (Fast)</option>
-          <option value="minimax-abab6.5" data-provider="minimax">MiniMax ABAB 6.5 (Powerful)</option>
-          <option value="minimax-text-01" data-provider="minimax">MiniMax Text-01</option>
-        </optgroup>
-        <optgroup label="Meta / Open Source">
-          <option value="meta-llama-3.1-405b" data-provider="together">Llama 3.1 405B (via Together AI)</option>
-          <option value="mistral-large" data-provider="mistral">Mistral Large</option>
-        </optgroup>
-      </select>
+
+    <div class="trigger-info">
+      <strong>Auto-switch triggers:</strong> rate limit (429) · quota exceeded (402) · server error (500/503) · timeout (&gt;30s) · connection refused (Ollama offline)<br>
+      <strong>Behaviour:</strong> retries current model once, then silently switches to next in chain. Logs all switches to <code>logs/model-router.log</code>
     </div>
   </div>
 </div>
@@ -392,30 +447,48 @@
 
   <div class="card">
     <div class="card-title">AI Model API Keys</div>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Based on the model you selected. Leave blank any you don't use.</p>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Only the providers you selected in your fallback chain are shown. 🟢 Free tier providers need a key but never charge you.</p>
 
-    <div class="field" id="field-anthropic">
-      <label>Anthropic API Key <span>for Claude models — <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="anthropicKey" placeholder="sk-ant-api03-...">
+    <div class="field" id="field-ollama">
+      <label>Ollama <span class="badge-free">FREE — no key needed</span></label>
+      <div style="font-size:0.82rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px">
+        Runs locally — install with: <code>brew install ollama</code> then <code>ollama pull llama3.1</code><br>
+        <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com →</a>
+      </div>
     </div>
+
+    <div class="field" id="field-groq">
+      <label>Groq API Key <span class="badge-free">FREE tier</span> <span>— <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
+      <input type="password" id="groqKey" placeholder="gsk_...">
+    </div>
+
     <div class="field" id="field-google">
-      <label>Google AI API Key <span>for Gemini models — <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <label>Google AI API Key <span class="badge-free">FREE tier</span> <span>— <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
       <input type="password" id="googleKey" placeholder="AIza...">
     </div>
-    <div class="field" id="field-openai">
-      <label>OpenAI API Key <span>for GPT / o3 models — <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="openaiKey" placeholder="sk-proj-...">
+
+    <div class="field" id="field-openrouter">
+      <label>OpenRouter API Key <span class="badge-free">FREE models</span> <span>— <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
+      <input type="password" id="openrouterKey" placeholder="sk-or-...">
     </div>
+
     <div class="field" id="field-minimax">
-      <label>Minimax API Key <span>for MiniMax models — <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <label>MiniMax API Key <span class="badge-free">FREE credits</span> <span>— <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
       <input type="password" id="minimaxKey" placeholder="eyJhbGci...">
     </div>
-    <div class="field" id="field-together">
-      <label>Together AI API Key <span>for Llama models — <a href="https://api.together.xyz/settings/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
-      <input type="password" id="togetherKey" placeholder="together-...">
+
+    <div class="field" id="field-anthropic">
+      <label>Anthropic API Key <span class="badge-paid">PAID</span> <span>— <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="anthropicKey" placeholder="sk-ant-api03-...">
     </div>
+
+    <div class="field" id="field-openai">
+      <label>OpenAI API Key <span class="badge-paid">PAID</span> <span>— <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="openaiKey" placeholder="sk-proj-...">
+    </div>
+
     <div class="field" id="field-mistral">
-      <label>Mistral API Key <span>for Mistral models — <a href="https://console.mistral.ai/api-keys/" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <label>Mistral API Key <span class="badge-paid">PAID</span> <span>— <a href="https://console.mistral.ai/api-keys/" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="mistralKey" placeholder="...">
     </div>
   </div>
@@ -647,13 +720,15 @@ async function generatePackage() {
     vaultPath: val('vaultPath') || '~/vault',
     projectRoot: val('projectRoot') || '~/omniclaw',
     nemoVersion: val('nemoVersion') || 'openshell-v4',
-    inferenceEngine: val('inferenceEngine') || 'turboquant-int4',
-    cloudModel: val('cloudModel') || 'claude-sonnet-4-6',
+    inferenceEngine: val('inferenceEngine') || 'ollama',
+    modelChain: getModelChain(),
+    cloudModel: (getModelChain()[0] || {model:'llama3.1'}).model,
     anthropicKey: val('anthropicKey'),
     googleKey: val('googleKey'),
     openaiKey: val('openaiKey'),
     minimaxKey: val('minimaxKey'),
-    togetherKey: val('togetherKey'),
+    groqKey: val('groqKey'),
+    openrouterKey: val('openrouterKey'),
     mistralKey: val('mistralKey'),
     firecrawlKey: val('firecrawlKey'),
     skillsmpKey: val('skillsmpKey'),
@@ -693,6 +768,9 @@ async function generatePackage() {
     AGENTS.forEach(a => {
       zip.file(`agents/csuite/${a.id}.md`, agentMd(a, cfg));
     });
+
+    // Model router
+    zip.file('dashboard/model-router.js', modelRouterJs(cfg));
 
     // Memory
     zip.file('memory/SOUL.md', soulMd(cfg));
@@ -902,6 +980,7 @@ echo -e "\${GREEN}============================================\${NC}"
 }
 
 function generateEnvFile(c) {
+  const chain = (c.modelChain || []).map((m,i) => `MODEL_CHAIN_${i+1}="${m.provider}::${m.model}"`).join('\n');
   return `# OmniClaw Environment — ${c.companyName}
 # Generated: ${new Date().toISOString()}
 COMPANY_NAME="${c.companyName}"
@@ -913,15 +992,20 @@ BUDGET_LIMIT="${c.budgetLimit}"
 DASHBOARD_PORT=${c.dashPort}
 VAULT_PATH="${c.vaultPath}"
 PROJECT_ROOT="${c.projectRoot}"
-CLOUD_MODEL="${c.cloudModel}"
 
-# AI Model Keys
+# Model Fallback Chain (auto-switches on rate limit / quota / error)
+${chain}
+# Trigger conditions: 429 rate limit, 402 quota, 500/503 server error, 30s timeout
+
+# AI Model API Keys (only keys for your selected providers needed)
 ANTHROPIC_API_KEY="${c.anthropicKey}"
 GOOGLE_AI_API_KEY="${c.googleKey}"
 OPENAI_API_KEY="${c.openaiKey}"
+GROQ_API_KEY="${c.groqKey}"
+OPENROUTER_API_KEY="${c.openrouterKey}"
 MINIMAX_API_KEY="${c.minimaxKey}"
-TOGETHER_API_KEY="${c.togetherKey}"
 MISTRAL_API_KEY="${c.mistralKey}"
+# Ollama runs locally — no key needed (http://localhost:11434)
 
 # Intelligence & Skills
 FIRECRAWL_API_KEY="${c.firecrawlKey}"
@@ -990,6 +1074,126 @@ capabilities:
     enabled: true
     provider: "skillsmp.com"
     auto_install_policy: "ask_permission"
+`;
+}
+
+function modelRouterJs(c) {
+  const chain = (c.modelChain || []);
+  const chainJson = JSON.stringify(chain.map(m => ({ provider: m.provider, model: m.model })), null, 2);
+  return `/**
+ * OmniClaw Model Router — Auto-Fallback Engine
+ * Tries each model in the chain. Switches on: 429, 402, 500, 503, timeout, connection refused.
+ * Logs all switches to logs/model-router.log
+ * Generated: ${new Date().toISOString()}
+ */
+
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+
+const LOG = path.join(__dirname, '..', 'logs', 'model-router.log');
+const CHAIN = ${chainJson};
+
+const PROVIDERS = {
+  ollama: {
+    url: () => 'http://localhost:11434/api/chat',
+    headers: () => ({ 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages, stream: false }),
+    extract: r => r.data?.message?.content,
+  },
+  groq: {
+    url: () => 'https://api.groq.com/openai/v1/chat/completions',
+    headers: () => ({ 'Authorization': \`Bearer \${process.env.GROQ_API_KEY}\`, 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages }),
+    extract: r => r.data?.choices?.[0]?.message?.content,
+  },
+  google: {
+    url: (model) => \`https://generativelanguage.googleapis.com/v1beta/models/\${model}:generateContent?key=\${process.env.GOOGLE_AI_API_KEY}\`,
+    headers: () => ({ 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })) }),
+    extract: r => r.data?.candidates?.[0]?.content?.parts?.[0]?.text,
+  },
+  openrouter: {
+    url: () => 'https://openrouter.ai/api/v1/chat/completions',
+    headers: () => ({ 'Authorization': \`Bearer \${process.env.OPENROUTER_API_KEY}\`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://omniclaw.app' }),
+    body: (model, messages) => ({ model, messages }),
+    extract: r => r.data?.choices?.[0]?.message?.content,
+  },
+  minimax: {
+    url: () => 'https://api.minimax.chat/v1/text/chatcompletion_v2',
+    headers: () => ({ 'Authorization': \`Bearer \${process.env.MINIMAX_API_KEY}\`, 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages }),
+    extract: r => r.data?.choices?.[0]?.message?.content,
+  },
+  anthropic: {
+    url: () => 'https://api.anthropic.com/v1/messages',
+    headers: () => ({ 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages: messages.filter(m => m.role !== 'system'), system: messages.find(m => m.role === 'system')?.content, max_tokens: 4096 }),
+    extract: r => r.data?.content?.[0]?.text,
+  },
+  openai: {
+    url: () => 'https://api.openai.com/v1/chat/completions',
+    headers: () => ({ 'Authorization': \`Bearer \${process.env.OPENAI_API_KEY}\`, 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages }),
+    extract: r => r.data?.choices?.[0]?.message?.content,
+  },
+  mistral: {
+    url: () => 'https://api.mistral.ai/v1/chat/completions',
+    headers: () => ({ 'Authorization': \`Bearer \${process.env.MISTRAL_API_KEY}\`, 'Content-Type': 'application/json' }),
+    body: (model, messages) => ({ model, messages }),
+    extract: r => r.data?.choices?.[0]?.message?.content,
+  },
+};
+
+const FALLBACK_CODES = new Set([429, 402, 500, 503, 529]);
+
+function log(msg) {
+  const line = \`[\${new Date().toISOString()}] \${msg}\\n\`;
+  fs.mkdirSync(path.dirname(LOG), { recursive: true });
+  fs.appendFileSync(LOG, line);
+  console.log('[ModelRouter]', msg);
+}
+
+async function chat(messages, opts = {}) {
+  const timeout = opts.timeout || 30000;
+  let lastError;
+
+  for (let i = 0; i < CHAIN.length; i++) {
+    const { provider, model } = CHAIN[i];
+    const p = PROVIDERS[provider];
+    if (!p) { log(\`Unknown provider: \${provider} — skipping\`); continue; }
+
+    try {
+      log(i === 0 ? \`Using \${provider}::\${model}\` : \`Falling back to \${provider}::\${model} (attempt \${i + 1})\`);
+      const res = await axios({
+        method: 'POST',
+        url: p.url(model),
+        headers: p.headers(model),
+        data: p.body(model, messages),
+        timeout,
+      });
+      const content = p.extract(res);
+      if (!content) throw new Error('Empty response from ' + provider);
+      if (i > 0) log(\`Success on fallback \${i + 1}: \${provider}::\${model}\`);
+      return { content, provider, model, fallbackLevel: i };
+    } catch (err) {
+      const code = err?.response?.status;
+      const reason = FALLBACK_CODES.has(code) ? \`HTTP \${code}\` :
+                     err.code === 'ECONNREFUSED' ? 'connection refused' :
+                     err.code === 'ECONNABORTED' ? 'timeout' : err.message;
+      log(\`\${provider}::\${model} failed (\${reason}) — \${i + 1 < CHAIN.length ? 'trying next' : 'no more fallbacks'}\`);
+      lastError = err;
+
+      if (!FALLBACK_CODES.has(code) && err.code !== 'ECONNREFUSED' && err.code !== 'ECONNABORTED') {
+        // Non-retryable error (e.g. bad API key) — skip to next provider immediately
+      }
+    }
+  }
+  throw lastError || new Error('All models in fallback chain failed');
+}
+
+module.exports = { chat, CHAIN, PROVIDERS };
 `;
 }
 
@@ -1090,16 +1294,36 @@ function download(filename, content) {
   URL.revokeObjectURL(url);
 }
 
-// Show/hide AI key fields based on selected model provider
+// Show only key fields for providers used in the fallback chain
 function updateApiKeyFields() {
-  const sel = document.getElementById('cloudModel');
-  const opt = sel.options[sel.selectedIndex];
-  const provider = opt ? opt.getAttribute('data-provider') : '';
-  const allProviders = ['anthropic','google','openai','minimax','together','mistral'];
+  const allProviders = ['ollama','groq','google','openrouter','minimax','anthropic','openai','mistral'];
+  const usedProviders = new Set();
+  ['model1','model2','model3'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value !== 'none') {
+      const p = opt.getAttribute('data-provider');
+      if (p) usedProviders.add(p);
+    }
+  });
   allProviders.forEach(p => {
     const el = document.getElementById('field-' + p);
-    if (el) el.style.display = (p === provider) ? '' : 'none';
+    if (el) el.style.display = usedProviders.has(p) ? '' : 'none';
   });
+}
+
+function getModelChain() {
+  return ['model1','model2','model3'].map(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return null;
+    const v = sel.value;
+    if (!v || v === 'none') return null;
+    const [provider, model] = v.split('::');
+    const opt = sel.options[sel.selectedIndex];
+    const isFree = opt ? opt.getAttribute('data-free') === 'true' : false;
+    return { provider, model, isFree, raw: v };
+  }).filter(Boolean);
 }
 
 // Init
