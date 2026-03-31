@@ -160,15 +160,15 @@
     <div class="card-title">Core Identity</div>
     <div class="field">
       <label>Company Name <span>used as identifier across all systems</span></label>
-      <input type="text" id="companyName" placeholder="e.g. OmniGen_Systems" value="OmniGen_Systems">
+      <input type="text" id="companyName" placeholder="e.g. Apex_Ventures" value="">
     </div>
     <div class="field">
       <label>Mission Statement <span>1–2 sentences — what this company actually does autonomously</span></label>
-      <textarea id="mission" placeholder="e.g. Automate cross-platform data synthesis, executive reporting, and capital allocation decisions for FELix."></textarea>
+      <textarea id="mission" placeholder="e.g. Automate cross-platform research, executive reporting, and capital allocation decisions for Apex Ventures."></textarea>
     </div>
     <div class="field">
       <label>Owner / Founder Name <span>used in agent memory and reports</span></label>
-      <input type="text" id="ownerName" placeholder="e.g. Felix">
+      <input type="text" id="ownerName" placeholder="e.g. Alex Morgan">
     </div>
     <div class="field-row">
       <div class="field">
@@ -181,7 +181,66 @@
       </div>
       <div class="field">
         <label>Timezone</label>
-        <input type="text" id="timezone" placeholder="e.g. Australia/Sydney" value="Australia/Sydney">
+        <select id="timezone">
+          <optgroup label="Australia / Pacific">
+            <option value="Australia/Sydney">Australia/Sydney (AEDT)</option>
+            <option value="Australia/Melbourne">Australia/Melbourne (AEDT)</option>
+            <option value="Australia/Brisbane">Australia/Brisbane (AEST)</option>
+            <option value="Australia/Perth">Australia/Perth (AWST)</option>
+            <option value="Australia/Adelaide">Australia/Adelaide (ACDT)</option>
+            <option value="Pacific/Auckland">Pacific/Auckland (NZDT)</option>
+            <option value="Pacific/Honolulu">Pacific/Honolulu (HST)</option>
+          </optgroup>
+          <optgroup label="Asia">
+            <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+            <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+            <option value="Asia/Hong_Kong">Asia/Hong Kong (HKT)</option>
+            <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+            <option value="Asia/Seoul">Asia/Seoul (KST)</option>
+            <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+            <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+            <option value="Asia/Bangkok">Asia/Bangkok (ICT)</option>
+            <option value="Asia/Jakarta">Asia/Jakarta (WIB)</option>
+            <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
+            <option value="Asia/Dhaka">Asia/Dhaka (BST)</option>
+          </optgroup>
+          <optgroup label="Europe">
+            <option value="Europe/London">Europe/London (GMT/BST)</option>
+            <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+            <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+            <option value="Europe/Amsterdam">Europe/Amsterdam (CET/CEST)</option>
+            <option value="Europe/Madrid">Europe/Madrid (CET/CEST)</option>
+            <option value="Europe/Rome">Europe/Rome (CET/CEST)</option>
+            <option value="Europe/Zurich">Europe/Zurich (CET/CEST)</option>
+            <option value="Europe/Stockholm">Europe/Stockholm (CET/CEST)</option>
+            <option value="Europe/Moscow">Europe/Moscow (MSK)</option>
+            <option value="Europe/Istanbul">Europe/Istanbul (TRT)</option>
+            <option value="Europe/Warsaw">Europe/Warsaw (CET/CEST)</option>
+          </optgroup>
+          <optgroup label="Americas">
+            <option value="America/New_York">America/New York (EST/EDT)</option>
+            <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+            <option value="America/Denver">America/Denver (MST/MDT)</option>
+            <option value="America/Los_Angeles">America/Los Angeles (PST/PDT)</option>
+            <option value="America/Toronto">America/Toronto (EST/EDT)</option>
+            <option value="America/Vancouver">America/Vancouver (PST/PDT)</option>
+            <option value="America/Mexico_City">America/Mexico City (CST/CDT)</option>
+            <option value="America/Sao_Paulo">America/Sao Paulo (BRT)</option>
+            <option value="America/Buenos_Aires">America/Buenos Aires (ART)</option>
+            <option value="America/Bogota">America/Bogota (COT)</option>
+          </optgroup>
+          <optgroup label="Africa / Middle East">
+            <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
+            <option value="Africa/Cairo">Africa/Cairo (EET)</option>
+            <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
+            <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
+            <option value="Asia/Riyadh">Asia/Riyadh (AST)</option>
+            <option value="Asia/Tel_Aviv">Asia/Tel Aviv (IST)</option>
+          </optgroup>
+          <optgroup label="UTC">
+            <option value="UTC">UTC</option>
+          </optgroup>
+        </select>
       </div>
     </div>
   </div>
@@ -267,11 +326,30 @@
     </div>
     <div class="field">
       <label>Primary Cloud Model</label>
-      <select id="cloudModel">
-        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
-        <option value="claude-opus-4-6">Claude Opus 4.6 (Powerful)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast)</option>
-        <option value="gpt-4o">GPT-4o (OpenAI)</option>
+      <select id="cloudModel" onchange="updateApiKeyFields()">
+        <optgroup label="Anthropic (Claude)">
+          <option value="claude-sonnet-4-6" data-provider="anthropic">Claude Sonnet 4.6 (Recommended)</option>
+          <option value="claude-opus-4-6" data-provider="anthropic">Claude Opus 4.6 (Powerful)</option>
+          <option value="claude-haiku-4-5" data-provider="anthropic">Claude Haiku 4.5 (Fast)</option>
+        </optgroup>
+        <optgroup label="Google">
+          <option value="gemini-2.0-flash" data-provider="google">Gemini 2.0 Flash (Fast)</option>
+          <option value="gemini-1.5-pro" data-provider="google">Gemini 1.5 Pro</option>
+        </optgroup>
+        <optgroup label="OpenAI">
+          <option value="gpt-4o" data-provider="openai">GPT-4o</option>
+          <option value="gpt-4o-mini" data-provider="openai">GPT-4o Mini (Fast)</option>
+          <option value="o3-mini" data-provider="openai">o3 Mini (Reasoning)</option>
+        </optgroup>
+        <optgroup label="Minimax">
+          <option value="minimax-abab6.5s" data-provider="minimax">MiniMax ABAB 6.5s (Fast)</option>
+          <option value="minimax-abab6.5" data-provider="minimax">MiniMax ABAB 6.5 (Powerful)</option>
+          <option value="minimax-text-01" data-provider="minimax">MiniMax Text-01</option>
+        </optgroup>
+        <optgroup label="Meta / Open Source">
+          <option value="meta-llama-3.1-405b" data-provider="together">Llama 3.1 405B (via Together AI)</option>
+          <option value="mistral-large" data-provider="mistral">Mistral Large</option>
+        </optgroup>
       </select>
     </div>
   </div>
@@ -311,52 +389,77 @@
     <p>All keys are stored locally in your <code>.env</code> file — never committed to GitHub.</p>
   </div>
   <div class="warning-box">These values are processed entirely in your browser. Nothing is sent to any server.</div>
+
   <div class="card">
-    <div class="card-title">Core AI APIs</div>
-    <div class="field">
-      <label>Anthropic API Key <span>for Claude models</span></label>
-      <input type="password" id="anthropicKey" placeholder="sk-ant-...">
+    <div class="card-title">AI Model API Keys</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Based on the model you selected. Leave blank any you don't use.</p>
+
+    <div class="field" id="field-anthropic">
+      <label>Anthropic API Key <span>for Claude models — <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="anthropicKey" placeholder="sk-ant-api03-...">
     </div>
-    <div class="field">
-      <label>Paperclip API Key <span>from paperclipai.net</span></label>
-      <input type="password" id="paperclipKey" placeholder="pcp-...">
+    <div class="field" id="field-google">
+      <label>Google AI API Key <span>for Gemini models — <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="googleKey" placeholder="AIza...">
     </div>
+    <div class="field" id="field-openai">
+      <label>OpenAI API Key <span>for GPT / o3 models — <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="openaiKey" placeholder="sk-proj-...">
+    </div>
+    <div class="field" id="field-minimax">
+      <label>Minimax API Key <span>for MiniMax models — <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="minimaxKey" placeholder="eyJhbGci...">
+    </div>
+    <div class="field" id="field-together">
+      <label>Together AI API Key <span>for Llama models — <a href="https://api.together.xyz/settings/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="togetherKey" placeholder="together-...">
+    </div>
+    <div class="field" id="field-mistral">
+      <label>Mistral API Key <span>for Mistral models — <a href="https://console.mistral.ai/api-keys/" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
+      <input type="password" id="mistralKey" placeholder="...">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Intelligence & Skills</div>
     <div class="field">
-      <label>Firecrawl API Key <span>for web intelligence</span></label>
+      <label>Firecrawl API Key <span>web scraping & research — <a href="https://www.firecrawl.dev/app/api-keys" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="firecrawlKey" placeholder="fc-...">
     </div>
     <div class="field">
-      <label>SkillsMP API Key <span>optional — for dynamic skill discovery</span></label>
+      <label>SkillsMP API Key <span>optional, dynamic skill discovery — <a href="https://skillsmp.com/settings" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="skillsmpKey" placeholder="smp-...">
     </div>
   </div>
+
   <div class="card">
-    <div class="card-title">Communication Bridges (OpenCLI-rs)</div>
+    <div class="card-title">Communication Bridges</div>
     <div class="field">
-      <label>Telegram Bot Token</label>
-      <input type="password" id="tgToken" placeholder="1234567890:AAF...">
+      <label>Telegram Bot Token <span>— <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">Create bot via BotFather →</a></span></label>
+      <input type="password" id="tgToken" placeholder="1234567890:AAFxxxxxxx">
     </div>
     <div class="field">
-      <label>Discord Bot Token <span>optional</span></label>
+      <label>Discord Bot Token <span>optional — <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal →</a></span></label>
       <input type="password" id="discordToken" placeholder="MTI...">
     </div>
     <div class="field">
-      <label>Voicebox.io API Key <span>optional — for voice reports</span></label>
+      <label>Voicebox.io API Key <span>optional, voice briefings — <a href="https://voicebox.io/dashboard" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="voiceboxKey" placeholder="vbx-...">
     </div>
   </div>
+
   <div class="card">
     <div class="card-title">Data & Storage</div>
     <div class="field">
-      <label>Supabase URL <span>optional — for persistent agent memory</span></label>
-      <input type="text" id="supabaseUrl" placeholder="https://xxx.supabase.co">
+      <label>Supabase Project URL <span>optional, persistent memory — <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">Supabase Dashboard →</a></span></label>
+      <input type="text" id="supabaseUrl" placeholder="https://xxxxxxxxxxxx.supabase.co">
     </div>
     <div class="field">
-      <label>Supabase Anon Key</label>
-      <input type="password" id="supabaseKey" placeholder="eyJ...">
+      <label>Supabase Anon Key <span>found in Project Settings → API</span></label>
+      <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
     </div>
     <div class="field">
-      <label>Google Docs Folder ID <span>optional — for report output</span></label>
+      <label>Google Docs Folder ID <span>optional, report output — <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">Google Drive →</a></span></label>
       <input type="text" id="googleDocsId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
     </div>
   </div>
@@ -371,8 +474,8 @@
   <div class="card">
     <div class="card-title">GitHub Repository</div>
     <div class="field">
-      <label>GitHub Username</label>
-      <input type="text" id="githubUser" placeholder="your-github-username">
+      <label>GitHub Username <span>— <a href="https://github.com/settings/tokens/new?scopes=repo,workflow" target="_blank" style="color:var(--accent)">Create Personal Access Token →</a></span></label>
+      <input type="text" id="githubUser" placeholder="e.g. your-github-username">
     </div>
     <div class="field">
       <label>Repository Name</label>
@@ -547,7 +650,11 @@ async function generatePackage() {
     inferenceEngine: val('inferenceEngine') || 'turboquant-int4',
     cloudModel: val('cloudModel') || 'claude-sonnet-4-6',
     anthropicKey: val('anthropicKey'),
-    paperclipKey: val('paperclipKey'),
+    googleKey: val('googleKey'),
+    openaiKey: val('openaiKey'),
+    minimaxKey: val('minimaxKey'),
+    togetherKey: val('togetherKey'),
+    mistralKey: val('mistralKey'),
     firecrawlKey: val('firecrawlKey'),
     skillsmpKey: val('skillsmpKey'),
     tgToken: val('tgToken'),
@@ -807,12 +914,30 @@ DASHBOARD_PORT=${c.dashPort}
 VAULT_PATH="${c.vaultPath}"
 PROJECT_ROOT="${c.projectRoot}"
 CLOUD_MODEL="${c.cloudModel}"
+
+# AI Model Keys
 ANTHROPIC_API_KEY="${c.anthropicKey}"
-PAPERCLIP_API_KEY="${c.paperclipKey}"
+GOOGLE_AI_API_KEY="${c.googleKey}"
+OPENAI_API_KEY="${c.openaiKey}"
+MINIMAX_API_KEY="${c.minimaxKey}"
+TOGETHER_API_KEY="${c.togetherKey}"
+MISTRAL_API_KEY="${c.mistralKey}"
+
+# Intelligence & Skills
 FIRECRAWL_API_KEY="${c.firecrawlKey}"
+SKILLSMP_API_KEY="${c.skillsmpKey}"
+
+# Communications
 TG_TOKEN="${c.tgToken}"
+DISCORD_TOKEN="${c.discordToken}"
+VOICEBOX_API_KEY="${c.voiceboxKey}"
+
+# Data
 SUPABASE_URL="${c.supabaseUrl}"
 SUPABASE_KEY="${c.supabaseKey}"
+GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
+
+# GitHub
 GITHUB_USER="${c.githubUser}"
 GITHUB_REPO="${c.githubRepo}"
 `;
@@ -965,8 +1090,21 @@ function download(filename, content) {
   URL.revokeObjectURL(url);
 }
 
+// Show/hide AI key fields based on selected model provider
+function updateApiKeyFields() {
+  const sel = document.getElementById('cloudModel');
+  const opt = sel.options[sel.selectedIndex];
+  const provider = opt ? opt.getAttribute('data-provider') : '';
+  const allProviders = ['anthropic','google','openai','minimax','together','mistral'];
+  allProviders.forEach(p => {
+    const el = document.getElementById('field-' + p);
+    if (el) el.style.display = (p === provider) ? '' : 'none';
+  });
+}
+
 // Init
 initAgentGrid();
+updateApiKeyFields();
 document.getElementById('stepInfo').textContent = `Step 1 of ${totalSteps}`;
 </script>
 </body>
