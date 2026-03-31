@@ -15,6 +15,13 @@
 set -e
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
 
+# Ensure Homebrew is on PATH (Apple Silicon installs to /opt/homebrew)
+if [ -f /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -f /usr/local/bin/brew ]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
+
 MODE="standard"
 DRY_RUN=false
 [[ "$*" == *"--docker"* ]] && MODE="docker"
@@ -98,21 +105,90 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # =============================================================================
-# [1/7] PREFLIGHT
+# [1/7] PREFLIGHT — Auto-install missing dependencies
 # =============================================================================
-echo -e "\n${BLUE}[1/7] Preflight checks...${NC}"
-pass=true
-check_cmd() { command -v "$1" >/dev/null 2>&1 && echo -e "  ${GREEN}✓ $1${NC}" || { echo -e "  ${RED}✗ $1 — required${NC}"; pass=false; }; }
-warn_cmd() { command -v "$1" >/dev/null 2>&1 && echo -e "  ${GREEN}✓ $1${NC}" || echo -e "  ${YELLOW}⚠ $1 — optional, some features will be skipped${NC}"; }
+echo -e "\n${BLUE}[1/7] Preflight checks & auto-install...${NC}"
 
-check_cmd git
-check_cmd node
-check_cmd npm
-warn_cmd cargo
-warn_cmd docker
-warn_cmd python3
+# Detect OS
+OS="unknown"
+if [[ "$OSTYPE" == "darwin"* ]]; then OS="macos"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then OS="linux"
+elif grep -qi microsoft /proc/version 2>/dev/null; then OS="wsl"
+fi
+echo -e "  OS detected: ${YELLOW}${OS}${NC}"
 
-[ "$pass" = false ] && { echo -e "\n${RED}Missing required tools. Install them and retry.${NC}"; exit 1; }
+# --- Homebrew (macOS only) ---
+if [ "$OS" = "macos" ]; then
+  if ! command -v brew >/dev/null 2>&1; then
+    echo -e "  ${YELLOW}⚠ Homebrew not found — installing...${NC}"
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    # Add to PATH for this session
+    [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+    [ -f /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+    echo -e "  ${GREEN}✓ Homebrew installed${NC}"
+  else
+    echo -e "  ${GREEN}✓ Homebrew $(brew --version | head -1)${NC}"
+  fi
+fi
+
+# --- Git ---
+if ! command -v git >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ Git not found — installing...${NC}"
+  case "$OS" in
+    macos) brew install git ;;
+    linux|wsl) sudo apt-get update -qq && sudo apt-get install -y git ;;
+  esac
+  echo -e "  ${GREEN}✓ Git installed${NC}"
+else
+  echo -e "  ${GREEN}✓ Git $(git --version | awk '{print $3}')${NC}"
+fi
+
+# --- Node.js & npm ---
+if ! command -v node >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ Node.js not found — installing...${NC}"
+  case "$OS" in
+    macos)
+      brew install node
+      ;;
+    linux|wsl)
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      ;;
+  esac
+  echo -e "  ${GREEN}✓ Node.js installed${NC}"
+else
+  echo -e "  ${GREEN}✓ Node.js $(node --version)${NC}"
+fi
+
+# npm comes with Node but double-check
+if ! command -v npm >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ npm not found — installing...${NC}"
+  case "$OS" in
+    macos) brew install npm ;;
+    linux|wsl) sudo apt-get install -y npm ;;
+  esac
+fi
+echo -e "  ${GREEN}✓ npm $(npm --version)${NC}"
+
+# --- Rust / Cargo (optional — for OpenCLI-rs) ---
+if ! command -v cargo >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ Rust not found — installing (needed for OpenCLI-rs)...${NC}"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --quiet
+  source "$HOME/.cargo/env" 2>/dev/null || true
+  echo -e "  ${GREEN}✓ Rust installed${NC}"
+else
+  echo -e "  ${GREEN}✓ Rust $(rustc --version | awk '{print $2}')${NC}"
+fi
+
+# --- Docker (optional — warn only, too large to auto-install silently) ---
+if ! command -v docker >/dev/null 2>&1; then
+  echo -e "  ${YELLOW}⚠ Docker not found — skipping (only needed for --docker mode)${NC}"
+  echo -e "    Install from: https://docker.com/get-started"
+else
+  echo -e "  ${GREEN}✓ Docker $(docker --version | awk '{print $3}' | tr -d ',')${NC}"
+fi
+
+echo -e "  ${GREEN}All required tools ready.${NC}"
 
 # =============================================================================
 # [2/7] DIRECTORY STRUCTURE
