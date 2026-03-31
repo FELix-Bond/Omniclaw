@@ -2015,20 +2015,21 @@ function orgChartJson(c) {
     { name: 'github-ops',       desc: 'Create repos, push code, manage issues, trigger workflows' },
     { name: 'superpowers-core',    desc: '400+ agent capabilities via SkillsMP marketplace' },
     { name: 'codex-subagents',     desc: '136+ specialised Codex subagents across 10 categories — Core Dev (12), Language Specialists (30), Infrastructure (16), Quality & Security (16), Data & AI (12), DevEx (13), Specialised Domains (12), Business & Product (11), Meta & Orchestration (12), Research & Analysis (7). Install: git clone github.com/VoltAgent/awesome-codex-subagents → copy .toml files to ~/.codex/agents/. Invoke by explicitly delegating in prompt. github.com/VoltAgent/awesome-codex-subagents' },
+    { name: 'openclaw-agent-pool', desc: '187 production-ready SOUL.md agent templates across 24 categories — Productivity (9), Business (14), Marketing (22), Development (18), DevOps (10), Finance (10), Legal (6), HR (8), Security (6), Compliance (4), Creative (10), Data (9), SaaS (6), E-Commerce (7), Education (8), Healthcare (7), Real Estate (5), Automation (6), Supply Chain (3), Voice (3), Customer Success (2), Freelance (4), Personal (7). Deploy any agent on demand from the Agent Pool panel — spins up in agents/temp/, chat with it, undeploy when done. github.com/mergisi/awesome-openclaw-agents' },
   ];
 
   const agentSkillFocus = {
-    CEO:  ['gmail-send','telegram-notify','slack-post','google-docs','perplexity-search'],
-    CFO:  ['stripe-read','google-sheets','supabase-query','gmail-send','notion-log'],
-    COO:  ['google-calendar','slack-post','notion-log','supabase-query','github-ops'],
-    CTO:  ['github-ops','opencli-rs','superpowers-core','codex-subagents','google-drive','supabase-query'],
-    CSO:  ['perplexity-search','firecrawl-intel','news-intel','hubspot-crm','google-docs','codex-subagents'],
-    CRO:  ['firecrawl-intel','news-intel','supabase-query','slack-post','google-sheets','codex-subagents'],
-    CIO:  ['perplexity-search','news-intel','firecrawl-intel','google-sheets','supabase-query','codex-subagents'],
-    CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm','codex-subagents'],
-    CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs','codex-subagents'],
-    CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log','codex-subagents'],
-    CMO:  ['opencli-rs','twitter','instagram','tiktok','linkedin','perplexity-search','firecrawl-intel','google-docs','notion-log','hubspot-crm','codex-subagents'],
+    CEO:  ['gmail-send','telegram-notify','slack-post','google-docs','perplexity-search','openclaw-agent-pool'],
+    CFO:  ['stripe-read','google-sheets','supabase-query','gmail-send','notion-log','openclaw-agent-pool'],
+    COO:  ['google-calendar','slack-post','notion-log','supabase-query','github-ops','openclaw-agent-pool'],
+    CTO:  ['github-ops','opencli-rs','superpowers-core','codex-subagents','openclaw-agent-pool','google-drive','supabase-query'],
+    CSO:  ['perplexity-search','firecrawl-intel','news-intel','hubspot-crm','google-docs','codex-subagents','openclaw-agent-pool'],
+    CRO:  ['firecrawl-intel','news-intel','supabase-query','slack-post','google-sheets','codex-subagents','openclaw-agent-pool'],
+    CIO:  ['perplexity-search','news-intel','firecrawl-intel','google-sheets','supabase-query','codex-subagents','openclaw-agent-pool'],
+    CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm','codex-subagents','openclaw-agent-pool'],
+    CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs','codex-subagents','openclaw-agent-pool'],
+    CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log','codex-subagents','openclaw-agent-pool'],
+    CMO:  ['opencli-rs','twitter','instagram','tiktok','linkedin','perplexity-search','firecrawl-intel','google-docs','notion-log','hubspot-crm','codex-subagents','openclaw-agent-pool'],
   };
 
   return JSON.stringify({
@@ -2134,6 +2135,42 @@ codex:specialized        | 12 agents — Blockchain/Web3, fintech, game dev, emb
 codex:business-product   | 11 agents — Product management, UX research, legal/compliance, technical writing, GTM | HIGH | CPO, CLO, CMO, CHRO
 codex:meta-orchestration | 12 agents — Multi-agent coordination, workflow automation, parallel dispatching, prompt engineering | HIGH | CTO, CEO, COO
 codex:research-analysis  | 7 agents — Market research, competitive intelligence, tech scouting, trend analysis | HIGH | CSO, CIO, CMO
+
+# =============================================================================
+# OPENCLAW AGENT POOL (187 agents — github.com/mergisi/awesome-openclaw-agents)
+# All 11 executives have access. Deploy any agent temporarily from the dashboard.
+# =============================================================================
+# --- HOW IT WORKS ---
+# 1. Open Agent Pool panel in the OmniClaw dashboard
+# 2. Browse 187 production-ready SOUL.md templates across 24 categories
+# 3. Hit Deploy — the agent's SOUL.md is downloaded and saved to agents/temp/
+# 4. Chat with it directly from the dashboard via POST /api/openclaw/agents/:id/chat
+# 5. Undeploy when the job's done — no residue
+#
+# --- CATEGORY DIRECTORY (24 categories) ---
+openclaw:productivity     | 9 agents — Orion, Pulse, Standup, Inbox, Minutes, Focus Timer, Notion Organizer | CEO, CIO, COO
+openclaw:business         | 14 agents — Radar, Compass, Pipeline, Ledger, Sentinel, SDR Outbound, Deal Forecaster | CEO, CFO, CSO, CRO
+openclaw:marketing        | 22 agents — Echo, Buzz, Rank, Scout, Reddit Scout, Cold Outreach, Brand Monitor, Email Sequence | CMO
+openclaw:development      | 18 agents — Lens (PR review), Scribe, Trace, Probe, Test Writer, Schema Designer, QA Tester | CTO
+openclaw:devops           | 10 agents — Incident Responder, Deploy Guardian, Infra Monitor, Cost Optimizer, SLA Monitor | CTO, COO
+openclaw:finance          | 10 agents — Expense Tracker, Invoice Manager, Revenue Analyst, Fraud Detector, Financial Forecaster | CFO
+openclaw:legal            | 6 agents — Contract Reviewer, Compliance Checker, Policy Writer, Patent Analyzer, NDA Generator | CLO
+openclaw:hr               | 8 agents — Recruiter, Onboarding, Performance Reviewer, Exit Interview, Compensation Benchmarker | CHRO
+openclaw:security         | 6 agents — Vuln Scanner, Access Auditor, Threat Monitor, Phishing Detector | CTO, CRO
+openclaw:compliance       | 4 agents — GDPR Auditor, SOC2 Preparer, AI Policy Writer, Risk Assessor | CLO, CRO
+openclaw:creative         | 10 agents — Brand Designer, Video Scripter, Podcast Producer, Copywriter, Ad Copywriter | CMO
+openclaw:data             | 9 agents — ETL Pipeline, Data Cleaner, Report Generator, SQL Assistant, Anomaly Detector | CIO, CFO
+openclaw:saas             | 6 agents — Onboarding Flow, Feature Request, Churn Prevention, Usage Analytics, Release Notes | CPO
+openclaw:ecommerce        | 7 agents — Product Lister, Review Responder, Pricing Optimizer, Abandoned Cart | CMO, CPO
+openclaw:education        | 8 agents — Tutor, Quiz Maker, Study Planner, Research Assistant, Curriculum Designer | CPO, CHRO
+openclaw:healthcare       | 7 agents — Wellness Coach, Meal Planner, Symptom Triage, Clinical Notes | CHRO
+openclaw:real-estate      | 5 agents — Listing Scout, Market Analyzer, Lead Qualifier, Commercial RE | CSO
+openclaw:automation       | 6 agents — Negotiation Agent, Overnight Coder, Morning Briefing, Discord Business | CEO, CTO, COO
+openclaw:supply-chain     | 3 agents — Route Optimizer, Inventory Forecaster, Vendor Evaluator | COO
+openclaw:voice            | 3 agents — Phone Receptionist, Voicemail Transcriber, Interview Bot | CHRO, CPO
+openclaw:customer-success | 2 agents — NPS Followup, Onboarding Guide | CPO, CMO
+openclaw:freelance        | 4 agents — Proposal Writer, Time Tracker, Client Manager | CEO, CFO
+openclaw:personal         | 7 agents — Atlas (schedule), Scroll (digest), Iron (fitness), Travel Planner | CEO
 `;
 }
 

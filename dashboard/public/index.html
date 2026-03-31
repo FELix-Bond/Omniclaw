@@ -67,6 +67,25 @@
   .at-dot.active { background: var(--green); }
   .at-dot.idle { background: var(--muted); }
 
+  /* AGENT POOL */
+  .ap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .ap-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .ap-card.deployed { border-color: var(--green); background: rgba(61,214,140,0.04); }
+  .ap-card .ap-cat { font-size: 0.68rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
+  .ap-card .ap-name { font-size: 0.92rem; font-weight: 600; }
+  .ap-card .ap-role { font-size: 0.75rem; color: var(--muted); flex: 1; }
+  .ap-card .ap-btn { align-self: flex-start; margin-top: 4px; padding: 5px 14px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .ap-btn-deploy { background: var(--accent); color: #fff; }
+  .ap-btn-deploy:hover { opacity: 0.85; }
+  .ap-btn-undeploy { background: rgba(224,92,92,0.15); color: var(--red); border: 1px solid rgba(224,92,92,0.3) !important; }
+  .ap-btn-chat { background: var(--surface2); color: var(--text); border: 1px solid var(--border) !important; margin-left: 6px; }
+  .ap-search { width: 100%; padding: 9px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.85rem; outline: none; }
+  .ap-cats { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .ap-cat-pill { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); transition: all 0.15s; }
+  .ap-cat-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ap-section { margin-bottom: 24px; }
+  .ap-section h4 { font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+
   /* DECISIONS TABLE */
   .dec-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   .dec-table th { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -158,6 +177,7 @@
     <div class="nav-item" onclick="showPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
     <div class="nav-item" onclick="showPanel('skills')"><span class="nav-icon">🛠️</span> Skills</div>
     <div class="nav-item" onclick="showPanel('integrations')"><span class="nav-icon">🔌</span> Integrations</div>
+    <div class="nav-item" onclick="showPanel('agentpool')"><span class="nav-icon">🤖</span> Agent Pool</div>
     <a class="nav-link" href="https://openclaw.ai" target="_blank"><span class="nav-icon">🦾</span> OpenClaw ↗</a>
     <a class="nav-link" href="https://github.com/FELix-Bond/Omniclaw" target="_blank"><span class="nav-icon">🔗</span> GitHub ↗</a>
   </nav>
@@ -379,6 +399,37 @@
       </div>
     </div>
 
+    <!-- AGENT POOL PANEL -->
+    <div class="panel" id="panel-agentpool">
+      <div style="max-width:960px">
+        <h3 style="margin:0 0 4px">Agent Pool</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 16px">187 production-ready specialist agents from <a href="https://github.com/mergisi/awesome-openclaw-agents" target="_blank" style="color:var(--accent)">awesome-openclaw-agents</a>. Deploy any agent temporarily — it spins up as a focused worker and can be chatted with or undeployed when the job's done.</p>
+
+        <!-- Deployed agents -->
+        <div class="ap-section">
+          <h4>Currently Deployed <span id="deployedCount" style="color:var(--green)"></span></h4>
+          <div class="ap-grid" id="deployedGrid">
+            <div style="color:var(--muted);font-size:0.82rem;grid-column:1/-1">No agents deployed yet. Browse the pool below and hit Deploy.</div>
+          </div>
+        </div>
+
+        <!-- Search + category filter -->
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+          <input class="ap-search" id="apSearch" placeholder="Search agents by name, role, or category..." oninput="filterAgentPool()">
+          <button class="btn-sm btn-ghost" onclick="loadAgentPool()" style="white-space:nowrap">Refresh</button>
+        </div>
+        <div class="ap-cats" id="apCatPills">
+          <span class="ap-cat-pill active" onclick="selectCategory(this, '')" data-cat="">All</span>
+        </div>
+
+        <!-- Full agent grid -->
+        <div class="ap-grid" id="agentPoolGrid">
+          <div style="color:var(--muted);font-size:0.85rem;grid-column:1/-1">Loading agent pool...</div>
+        </div>
+        <div style="margin-top:12px;font-size:0.78rem;color:var(--muted)" id="apCount"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -409,13 +460,14 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + id)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
-  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI', skills: 'Skill Pool', integrations: 'Integrations' };
+  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI', skills: 'Skill Pool', integrations: 'Integrations', agentpool: 'Agent Pool — 187 Specialists' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
   if (id === 'memory') loadMemory();
   if (id === 'github') refreshGithub();
   if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
   if (id === 'integrations') loadIntegrations();
   if (id === 'skills') loadSkills();
+  if (id === 'agentpool') loadAgentPool();
 }
 
 // =============================================================================
@@ -736,6 +788,144 @@ async function loadSkills() {
       </div>`).join('');
   } catch(e) {}
 }
+
+// =============================================================================
+// AGENT POOL — browse + deploy 187 OpenClaw agents
+// =============================================================================
+let allPoolAgents = [];
+let deployedAgentIds = new Set();
+let activeCategoryFilter = '';
+
+async function loadAgentPool() {
+  await refreshDeployed();
+  try {
+    const r = await fetch('/api/openclaw/agents');
+    const d = await r.json();
+    allPoolAgents = d.agents || [];
+    renderCategoryPills();
+    renderAgentPool(allPoolAgents);
+    document.getElementById('apCount').textContent = `${allPoolAgents.length} agents available`;
+  } catch(e) {
+    document.getElementById('agentPoolGrid').innerHTML = '<div style="color:var(--muted);grid-column:1/-1">Could not load agent pool. Server may still be starting up.</div>';
+  }
+}
+
+async function refreshDeployed() {
+  try {
+    const r = await fetch('/api/openclaw/agents/deployed');
+    const deployed = await r.json();
+    deployedAgentIds = new Set(deployed.map(a => a.agentId));
+    const grid = document.getElementById('deployedGrid');
+    document.getElementById('deployedCount').textContent = deployed.length ? `(${deployed.length})` : '';
+    if (!deployed.length) {
+      grid.innerHTML = '<div style="color:var(--muted);font-size:0.82rem;grid-column:1/-1">No agents deployed yet. Browse the pool below and hit Deploy.</div>';
+      return;
+    }
+    grid.innerHTML = deployed.map(a => `
+      <div class="ap-card deployed">
+        <div class="ap-cat">${a.category || ''}</div>
+        <div class="ap-name">${a.name || a.agentId}</div>
+        <div class="ap-role">${a.role || ''}</div>
+        <div style="display:flex;gap:0;margin-top:4px;flex-wrap:wrap">
+          <button class="ap-btn ap-btn-chat" onclick="openTempAgentChat('${a.agentId}','${(a.name||a.agentId).replace(/'/g,"\\'")}')">Chat</button>
+          <button class="ap-btn ap-btn-undeploy" style="margin-left:6px" onclick="undeployAgent('${a.agentId}')">Undeploy</button>
+        </div>
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:2px">Deployed ${a.deployedAt ? timeAgo(a.deployedAt) : 'just now'}</div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+function renderCategoryPills() {
+  const cats = [...new Set(allPoolAgents.map(a => a.category))].sort();
+  const pills = document.getElementById('apCatPills');
+  pills.innerHTML = `<span class="ap-cat-pill ${!activeCategoryFilter?'active':''}" onclick="selectCategory(this,'')" data-cat="">All (${allPoolAgents.length})</span>` +
+    cats.map(c => {
+      const count = allPoolAgents.filter(a => a.category === c).length;
+      return `<span class="ap-cat-pill ${activeCategoryFilter===c?'active':''}" onclick="selectCategory(this,'${c}')" data-cat="${c}">${c} (${count})</span>`;
+    }).join('');
+}
+
+function selectCategory(el, cat) {
+  activeCategoryFilter = cat;
+  document.querySelectorAll('.ap-cat-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  filterAgentPool();
+}
+
+function filterAgentPool() {
+  const q = (document.getElementById('apSearch')?.value || '').toLowerCase();
+  let filtered = allPoolAgents;
+  if (activeCategoryFilter) filtered = filtered.filter(a => a.category === activeCategoryFilter);
+  if (q) filtered = filtered.filter(a => (a.name+a.role+a.category).toLowerCase().includes(q));
+  renderAgentPool(filtered);
+  document.getElementById('apCount').textContent = `${filtered.length} of ${allPoolAgents.length} agents`;
+}
+
+function renderAgentPool(agents) {
+  const grid = document.getElementById('agentPoolGrid');
+  if (!agents.length) { grid.innerHTML = '<div style="color:var(--muted);grid-column:1/-1">No agents match your search.</div>'; return; }
+  grid.innerHTML = agents.map(a => {
+    const isDeployed = deployedAgentIds.has(a.id);
+    return `<div class="ap-card${isDeployed?' deployed':''}">
+      <div class="ap-cat">${a.category}</div>
+      <div class="ap-name">${a.name}</div>
+      <div class="ap-role">${a.role}</div>
+      ${isDeployed
+        ? `<div style="display:flex;gap:0;margin-top:4px">
+             <button class="ap-btn ap-btn-chat" onclick="openTempAgentChat('${a.id}','${a.name.replace(/'/g,"\\'")}')">Chat</button>
+             <button class="ap-btn ap-btn-undeploy" style="margin-left:6px" onclick="undeployAgent('${a.id}')">Undeploy</button>
+           </div>`
+        : `<button class="ap-btn ap-btn-deploy" onclick="deployAgent('${a.id}','${a.path||''}','${a.name.replace(/'/g,"\\'")}','${a.category}','${(a.role||'').replace(/'/g,"\\'")}')">Deploy</button>`
+      }
+    </div>`;
+  }).join('');
+}
+
+async function deployAgent(id, agentPath, name, category, role) {
+  const btn = event.target;
+  btn.textContent = 'Deploying...'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/openclaw/agents/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: id, agentPath, name, category, role }),
+    });
+    const d = await r.json();
+    if (d.success) {
+      deployedAgentIds.add(id);
+      await refreshDeployed();
+      filterAgentPool();
+    } else {
+      btn.textContent = 'Deploy'; btn.disabled = false;
+      alert('Deploy failed: ' + d.error);
+    }
+  } catch(e) { btn.textContent = 'Deploy'; btn.disabled = false; alert('Error: ' + e.message); }
+}
+
+async function undeployAgent(id) {
+  if (!confirm(`Undeploy ${id}?`)) return;
+  try {
+    await fetch('/api/openclaw/agents/undeploy/' + id, { method: 'DELETE' });
+    deployedAgentIds.delete(id);
+    await refreshDeployed();
+    filterAgentPool();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function openTempAgentChat(agentId, agentName) {
+  const msg = prompt(`Chat with ${agentName}:\n\nType your message:`);
+  if (!msg) return;
+  fetch('/api/openclaw/agents/' + agentId + '/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg }),
+  }).then(r => r.json()).then(d => {
+    alert(`${d.agent} (${d.category}):\n\n${d.reply}`);
+  }).catch(e => alert('Error: ' + e.message));
+}
+
+socket.on('openclaw:deployed',   () => { if (document.getElementById('panel-agentpool').classList.contains('active')) refreshDeployed(); });
+socket.on('openclaw:undeployed', () => { if (document.getElementById('panel-agentpool').classList.contains('active')) refreshDeployed(); });
 
 // Expose org-chart to frontend
 // (add API route to server.js would be needed — for now falls back gracefully)

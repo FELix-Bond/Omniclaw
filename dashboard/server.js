@@ -495,28 +495,106 @@ const SKILL_MANIFEST = {
     { id: 'codex:meta-orchestration',desc: '12 agents — Multi-agent coordination, workflow automation, parallel task dispatching, agent planning, prompt engineering. Use for: "break this into parallel workstreams", "design the agent workflow", "orchestrate a multi-step build"' },
     { id: 'codex:research-analysis', desc: '7 agents — Market research, competitive intelligence, technology scouting, trend analysis, literature review. Use for: "research competitors in this space", "find the state of the art for X", "analyse this market"' },
   ],
+  // 187 production-ready OpenClaw SOUL.md templates — github.com/mergisi/awesome-openclaw-agents
+  // Deploy any agent temporarily via POST /api/openclaw/agents/deploy
+  // They spin up as temporary workers in agents/temp/ and can be undeployed when done
+  openclaw_agents: [
+    { id: 'openclaw:productivity',     desc: '9 agents — Orion (task coordination), Pulse (analytics dashboards), Standup, Inbox (email triage), Minutes (meeting summaries), Focus Timer, Habit Tracker, Meeting Transcriber, Notion Organizer. Deploy via: POST /api/openclaw/agents/deploy' },
+    { id: 'openclaw:business',         desc: '14 agents — Radar (data insights), Compass (ticket triage), Pipeline (lead scoring/CRM), Ledger (payments/MRR), Sentinel (churn risk), Personal CRM, WhatsApp Business, Meeting Scheduler, Competitor Pricing, SDR Outbound, Deal Forecaster, Objection Handler, Lead Gen, ERP Admin' },
+    { id: 'openclaw:marketing',        desc: '22 agents — Echo (blog/social/email), Buzz (Twitter/LinkedIn threads), Rank (SEO/keyword research), Digest (newsletter), Scout (competitor intel), Reddit Scout, TikTok Repurposer, Cold Outreach, A/B Test Analyzer, Influencer Finder, Brand Monitor, Email Sequence, Content Repurposer, Book Writer, News Curator, UGC Video, Multi-Account Social, LinkedIn Content, Localization, X/Twitter Growth, YouTube SEO' },
+    { id: 'openclaw:development',      desc: '18 agents — Lens (PR review), Scribe (docs/README), Trace (error analysis), Probe (API testing), Log (changelog), Dependency Scanner, PR Merger, Migration Helper, Test Writer, Schema Designer, API Documentation, Blockchain Analyst, GitHub Issue Triager, GitHub PR Reviewer, QA Tester, Script Builder, Ecommerce Dev, Game Designer' },
+    { id: 'openclaw:devops',           desc: '10 agents — Incident Responder, Deploy Guardian, Infra Monitor, Log Analyzer, Cost Optimizer, Self-Healing Server, Raspberry Pi Agent, Runbook Writer, SLA Monitor, Capacity Planner' },
+    { id: 'openclaw:finance',          desc: '10 agents — Expense Tracker, Invoice Manager, Revenue Analyst, Tax Preparer, Trading Bot, Fraud Detector, Financial Forecaster, Portfolio Rebalancer, Accounts Payable, Copy Trader' },
+    { id: 'openclaw:legal',            desc: '6 agents — Contract Reviewer, Compliance Checker, Policy Writer, Patent Analyzer, Legal Brief Writer, NDA Generator' },
+    { id: 'openclaw:hr',               desc: '8 agents — Recruiter, Onboarding, Performance Reviewer, Resume Screener, Exit Interview, Benefits Advisor, Compensation Benchmarker, Resume Optimizer' },
+    { id: 'openclaw:security',         desc: '6 agents — Vuln Scanner, Access Auditor, Threat Monitor, Incident Logger, Security Hardener, Phishing Detector' },
+    { id: 'openclaw:compliance',       desc: '4 agents — GDPR Auditor, SOC2 Preparer, AI Policy Writer, Risk Assessor' },
+    { id: 'openclaw:creative',         desc: '10 agents — Brand Designer, Video Scripter, Podcast Producer, UX Researcher, Copywriter, Thumbnail Designer, Ad Copywriter, Storyboard Writer, Audio Producer, Proofreader' },
+    { id: 'openclaw:data',             desc: '9 agents — ETL Pipeline, Data Cleaner, Report Generator, SQL Assistant, Dashboard Builder, Anomaly Detector, Survey Analyzer, Data Entry, Transcription' },
+    { id: 'openclaw:saas',             desc: '6 agents — Onboarding Flow, Feature Request, Churn Prevention, Usage Analytics, Release Notes, Product Scrum' },
+    { id: 'openclaw:ecommerce',        desc: '7 agents — Product Lister, Review Responder, Inventory Tracker, Pricing Optimizer, Abandoned Cart, Dropshipping Researcher, Price Monitor' },
+    { id: 'openclaw:education',        desc: '8 agents — Tutor, Quiz Maker, Study Planner, Research Assistant, Language Tutor, Curriculum Designer, Essay Grader, Flashcard Generator' },
+    { id: 'openclaw:healthcare',       desc: '7 agents — Wellness Coach, Meal Planner, Workout Tracker, Symptom Triage, Clinical Notes, Medication Checker, Patient Intake' },
+    { id: 'openclaw:real-estate',      desc: '5 agents — Listing Scout, Market Analyzer, Lead Qualifier, Property Video, Commercial RE' },
+    { id: 'openclaw:automation',       desc: '6 agents — Negotiation Agent, Job Applicant, Morning Briefing, Flight Scraper, Overnight Coder, Discord Business' },
+    { id: 'openclaw:supply-chain',     desc: '3 agents — Route Optimizer, Inventory Forecaster, Vendor Evaluator' },
+    { id: 'openclaw:voice',            desc: '3 agents — Phone Receptionist, Voicemail Transcriber, Interview Bot' },
+    { id: 'openclaw:customer-success', desc: '2 agents — NPS Followup, Onboarding Guide' },
+    { id: 'openclaw:freelance',        desc: '4 agents — Proposal Writer, Time Tracker, Client Manager, Upwork Proposal' },
+    { id: 'openclaw:personal',         desc: '7 agents — Atlas (schedule optimisation), Scroll (reading digest), Iron (fitness), Home Automation, Family Coordinator, Travel Planner, Journal Prompter' },
+    { id: 'openclaw:security-extra',   desc: '3 Moltbook agents — Community Manager, Scout (feed monitoring), Growth Agent (follower strategy)' },
+  ],
 };
 
 // Per-agent primary skill focus (NOT restrictions — all agents access full pool)
 const AGENT_PRIMARY_SKILLS = {
-  CEO:  ['brainstorming', 'writing-plans', 'executing-plans', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'gmail', 'google-docs', 'slack'],
-  CFO:  ['yahoo-finance', 'bloomberg', 'stripe', 'google-sheets', 'hubspot', 'writing-plans', 'verification-before-completion', 'codex:data-ai', 'codex:specialized'],
-  COO:  ['executing-plans', 'writing-plans', 'google-sheets', 'notion-api', 'slack', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'codex:devex'],
+  CEO:  ['brainstorming', 'writing-plans', 'executing-plans', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'gmail', 'google-docs', 'slack',
+         'openclaw:productivity', 'openclaw:business', 'openclaw:automation'],
+  CFO:  ['yahoo-finance', 'bloomberg', 'stripe', 'google-sheets', 'hubspot', 'writing-plans', 'verification-before-completion', 'codex:data-ai', 'codex:specialized',
+         'openclaw:finance', 'openclaw:business', 'openclaw:data', 'openclaw:compliance'],
+  COO:  ['executing-plans', 'writing-plans', 'google-sheets', 'notion-api', 'slack', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'codex:devex',
+         'openclaw:productivity', 'openclaw:business', 'openclaw:devops', 'openclaw:supply-chain', 'openclaw:automation'],
   CTO:  [
-    // Core engineering
     'github', 'stackoverflow', 'hackernews', 'arxiv', 'cursor', 'systematic-debugging', 'google-drive',
-    // Codex subagent categories — full access with deep briefing below
     'codex:core-dev', 'codex:language-specialists', 'codex:infrastructure',
     'codex:quality-security', 'codex:data-ai', 'codex:devex',
     'codex:specialized', 'codex:meta-orchestration', 'codex:research-analysis',
+    'openclaw:development', 'openclaw:devops', 'openclaw:security', 'openclaw:data', 'openclaw:automation',
   ],
-  CSO:  ['brainstorming', 'perplexity', 'firecrawl', 'bloomberg', 'bbc', 'arxiv', 'writing-plans', 'codex:research-analysis', 'codex:business-product'],
-  CMO:  ['twitter', 'instagram', 'tiktok', 'reddit', 'linkedin', 'youtube', 'medium', 'substack', 'firecrawl', 'perplexity', 'brainstorming', 'writing-plans', 'codex:research-analysis', 'codex:business-product'],
-  CRO:  ['systematic-debugging', 'verification-before-completion', 'bloomberg', 'hubspot', 'stripe', 'writing-plans', 'codex:quality-security'],
-  CIO:  ['google-sheets', 'supabase', 'perplexity', 'google', 'bbc', 'arxiv', 'dispatching-parallel-agents', 'codex:data-ai', 'codex:research-analysis'],
-  CPO:  ['brainstorming', 'writing-plans', 'notion-api', 'github', 'google-docs', 'verification-before-completion', 'codex:business-product', 'codex:devex'],
-  CHRO: ['linkedin', 'notion-api', 'google-docs', 'slack', 'gmail', 'writing-plans', 'codex:business-product'],
-  CLO:  ['google', 'arxiv', 'notion-api', 'google-docs', 'gmail', 'verification-before-completion', 'codex:business-product', 'codex:quality-security'],
+  CSO:  ['brainstorming', 'perplexity', 'firecrawl', 'bloomberg', 'bbc', 'arxiv', 'writing-plans', 'codex:research-analysis', 'codex:business-product',
+         'openclaw:business', 'openclaw:marketing', 'openclaw:data', 'openclaw:real-estate'],
+  CMO:  ['twitter', 'instagram', 'tiktok', 'reddit', 'linkedin', 'youtube', 'medium', 'substack', 'firecrawl', 'perplexity', 'brainstorming', 'writing-plans', 'codex:research-analysis', 'codex:business-product',
+         'openclaw:marketing', 'openclaw:creative', 'openclaw:ecommerce', 'openclaw:customer-success'],
+  CRO:  ['systematic-debugging', 'verification-before-completion', 'bloomberg', 'hubspot', 'stripe', 'writing-plans', 'codex:quality-security',
+         'openclaw:security', 'openclaw:compliance', 'openclaw:finance', 'openclaw:legal'],
+  CIO:  ['google-sheets', 'supabase', 'perplexity', 'google', 'bbc', 'arxiv', 'dispatching-parallel-agents', 'codex:data-ai', 'codex:research-analysis',
+         'openclaw:data', 'openclaw:productivity', 'openclaw:devops', 'openclaw:automation'],
+  CPO:  ['brainstorming', 'writing-plans', 'notion-api', 'github', 'google-docs', 'verification-before-completion', 'codex:business-product', 'codex:devex',
+         'openclaw:saas', 'openclaw:development', 'openclaw:education', 'openclaw:customer-success'],
+  CHRO: ['linkedin', 'notion-api', 'google-docs', 'slack', 'gmail', 'writing-plans', 'codex:business-product',
+         'openclaw:hr', 'openclaw:personal', 'openclaw:voice', 'openclaw:education'],
+  CLO:  ['google', 'arxiv', 'notion-api', 'google-docs', 'gmail', 'verification-before-completion', 'codex:business-product', 'codex:quality-security',
+         'openclaw:legal', 'openclaw:compliance', 'openclaw:security'],
+};
+
+// Per-exec priority categories for the 187-agent OpenClaw pool
+const OPENCLAW_EXEC_CATEGORIES = {
+  CEO:  { cats: ['productivity','business','automation'],                          focus: 'company operations, daily workflow, and decision-making support' },
+  CFO:  { cats: ['finance','business','data','compliance'],                        focus: 'financial analysis, revenue tracking, and compliance monitoring' },
+  COO:  { cats: ['productivity','business','devops','supply-chain','automation'],  focus: 'operational execution, team coordination, and process automation' },
+  CTO:  { cats: ['development','devops','security','data','automation'],           focus: 'engineering velocity, infrastructure, and technical quality' },
+  CSO:  { cats: ['business','marketing','data','real-estate'],                     focus: 'market intelligence, competitive positioning, and strategic research' },
+  CMO:  { cats: ['marketing','creative','ecommerce','customer-success'],           focus: 'growth, content, brand, and audience building' },
+  CRO:  { cats: ['security','compliance','finance','legal'],                       focus: 'risk detection, compliance auditing, and threat monitoring' },
+  CIO:  { cats: ['data','productivity','devops','automation'],                     focus: 'intelligence gathering, data pipelines, and analytics' },
+  CPO:  { cats: ['saas','development','education','customer-success'],             focus: 'product building, user onboarding, and feature prioritisation' },
+  CHRO: { cats: ['hr','personal','voice','education'],                             focus: 'talent, culture, people ops, and team wellbeing' },
+  CLO:  { cats: ['legal','compliance','security'],                                 focus: 'legal review, contract analysis, and regulatory compliance' },
+};
+
+const OPENCLAW_CATEGORY_AGENTS = {
+  productivity:    'Orion (tasks), Pulse (analytics), Standup, Inbox (email triage), Minutes (meetings), Focus Timer, Notion Organizer',
+  business:        'Radar (data insights), Pipeline (leads), Ledger (MRR), Sentinel (churn risk), SDR Outbound, Deal Forecaster, Competitor Pricing',
+  automation:      'Negotiation Agent, Morning Briefing, Overnight Coder, Discord Business, Job Applicant, Flight Scraper',
+  finance:         'Expense Tracker, Invoice Manager, Revenue Analyst, Fraud Detector, Financial Forecaster, Portfolio Rebalancer, Accounts Payable',
+  compliance:      'GDPR Auditor, SOC2 Preparer, AI Policy Writer, Risk Assessor',
+  marketing:       'Echo (blog/social), Buzz (Twitter/LinkedIn), Rank (SEO), Scout (competitor), Reddit Scout, Cold Outreach, Brand Monitor, Content Repurposer, YouTube SEO',
+  creative:        'Brand Designer, Video Scripter, Podcast Producer, Copywriter, Ad Copywriter, Thumbnail Designer, Storyboard Writer',
+  ecommerce:       'Product Lister, Review Responder, Inventory Tracker, Pricing Optimizer, Abandoned Cart, Dropshipping Researcher',
+  'customer-success': 'NPS Followup, Onboarding Guide',
+  development:     'Lens (PR review), Scribe (docs), Trace (errors), Probe (API testing), Test Writer, Schema Designer, GitHub Issue Triager, QA Tester',
+  devops:          'Incident Responder, Deploy Guardian, Infra Monitor, Log Analyzer, Cost Optimizer, Self-Healing Server, SLA Monitor',
+  security:        'Vuln Scanner, Access Auditor, Threat Monitor, Incident Logger, Security Hardener, Phishing Detector',
+  data:            'ETL Pipeline, Data Cleaner, Report Generator, SQL Assistant, Dashboard Builder, Anomaly Detector, Survey Analyzer',
+  saas:            'Onboarding Flow, Feature Request, Churn Prevention, Usage Analytics, Release Notes, Product Scrum',
+  education:       'Tutor, Quiz Maker, Study Planner, Research Assistant, Curriculum Designer, Essay Grader, Flashcard Generator',
+  hr:              'Recruiter, Onboarding, Performance Reviewer, Resume Screener, Exit Interview, Benefits Advisor, Compensation Benchmarker',
+  legal:           'Contract Reviewer, Compliance Checker, Policy Writer, Patent Analyzer, Legal Brief Writer, NDA Generator',
+  'supply-chain':  'Route Optimizer, Inventory Forecaster, Vendor Evaluator',
+  'real-estate':   'Listing Scout, Market Analyzer, Lead Qualifier, Commercial RE',
+  voice:           'Phone Receptionist, Voicemail Transcriber, Interview Bot',
+  personal:        'Atlas (schedule), Scroll (reading digest), Iron (fitness), Home Automation, Travel Planner',
+  freelance:       'Proposal Writer, Time Tracker, Client Manager',
 };
 
 // Full briefing injected into CTO system prompt — how to use awesome-codex-subagents
@@ -635,12 +713,29 @@ function getSkillContextForAgent(agentId) {
       ? `\nCODEX SUBAGENTS available for your role — install from github.com/VoltAgent/awesome-codex-subagents. Invoke by explicitly delegating: "Use the [subagent-name] subagent to [task]". Ask the CTO for a full briefing on available agents and patterns.`
       : '';
 
+  // OpenClaw Agent Pool note — per-exec targeted categories
+  const ocExec = OPENCLAW_EXEC_CATEGORIES[agentId];
+  const openclawNote = ocExec ? `
+
+OPENCLAW AGENT POOL — 187 temporary specialist agents on demand (github.com/mergisi/awesome-openclaw-agents)
+Your priority categories for ${ocExec.focus}:
+${ocExec.cats.map(cat => {
+  const agents = OPENCLAW_CATEGORY_AGENTS[cat] || '';
+  const count = (SKILL_MANIFEST.openclaw_agents.find(s => s.id === `openclaw:${cat}`) || {}).desc || '';
+  return `  • ${cat.toUpperCase()}: ${agents}`;
+}).join('\n')}
+
+To deploy any agent temporarily: POST /api/openclaw/agents/deploy with { "agentId": "<id>", "category": "<category>" }
+To see all 187 agents: GET /api/openclaw/agents | To see what's deployed: GET /api/openclaw/agents/deployed
+Once deployed, agents live in agents/temp/ and can be used as specialised workers until undeployed.
+Browse the full pool from the Agent Pool panel in the dashboard.` : '';
+
   return `
 AVAILABLE TOOLS & SKILLS (shared pool — use any that help):
 Primary skills for your role:
 ${primaryList}
 
-When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.${codexNote}`;
+When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.${codexNote}${openclawNote}`;
 }
 
 async function sendTelegram(chatId, text) {
@@ -1103,6 +1198,124 @@ app.get('/api/update/check', async (req, res) => {
   await checkForUpdate();
   const localVersion = fs.existsSync(VERSION_FILE) ? fs.readFileSync(VERSION_FILE, 'utf8').trim() : '0.0.0';
   res.json({ current: localVersion, update: updateAvailable });
+});
+
+// =============================================================================
+// OPENCLAW AGENT POOL — browse + deploy 187 temporary specialist agents
+// Source: github.com/mergisi/awesome-openclaw-agents
+// =============================================================================
+const OPENCLAW_AGENTS_CACHE_PATH = path.join(MEMORY_DIR, 'openclaw-agents-cache.json');
+const OPENCLAW_AGENTS_URL = 'https://raw.githubusercontent.com/mergisi/awesome-openclaw-agents/main/agents.json';
+const TEMP_AGENTS_DIR = path.join(ROOT, 'agents', 'temp');
+
+let openclawAgentsCache = null;
+let openclawCacheTime = 0;
+
+async function getOpenclawAgents() {
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  if (openclawAgentsCache && Date.now() - openclawCacheTime < CACHE_TTL) return openclawAgentsCache;
+  // Try disk cache first
+  if (fs.existsSync(OPENCLAW_AGENTS_CACHE_PATH)) {
+    const stat = fs.statSync(OPENCLAW_AGENTS_CACHE_PATH);
+    if (Date.now() - stat.mtimeMs < CACHE_TTL) {
+      openclawAgentsCache = JSON.parse(fs.readFileSync(OPENCLAW_AGENTS_CACHE_PATH, 'utf8'));
+      openclawCacheTime = stat.mtimeMs;
+      return openclawAgentsCache;
+    }
+  }
+  // Fetch from GitHub
+  try {
+    const r = await axios.get(OPENCLAW_AGENTS_URL, { timeout: 15000 });
+    openclawAgentsCache = r.data;
+    openclawCacheTime = Date.now();
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    fs.writeFileSync(OPENCLAW_AGENTS_CACHE_PATH, JSON.stringify(r.data, null, 2));
+    console.log(`[OPENCLAW] Fetched ${Array.isArray(r.data) ? r.data.length : '?'} agents from GitHub`);
+    return openclawAgentsCache;
+  } catch (e) {
+    console.log('[OPENCLAW] Could not fetch agents.json:', e.message);
+    return [];
+  }
+}
+
+// List all 187 agents (with category filter)
+app.get('/api/openclaw/agents', async (req, res) => {
+  const agents = await getOpenclawAgents();
+  const { category, q } = req.query;
+  let filtered = Array.isArray(agents) ? agents : [];
+  if (category) filtered = filtered.filter(a => a.category === category);
+  if (q) { const lq = q.toLowerCase(); filtered = filtered.filter(a => (a.name+a.role+a.category).toLowerCase().includes(lq)); }
+  res.json({ total: filtered.length, agents: filtered });
+});
+
+// List all categories (with counts)
+app.get('/api/openclaw/agents/categories', async (req, res) => {
+  const agents = await getOpenclawAgents();
+  const counts = {};
+  (Array.isArray(agents) ? agents : []).forEach(a => { counts[a.category] = (counts[a.category] || 0) + 1; });
+  res.json(counts);
+});
+
+// List currently deployed temp agents
+app.get('/api/openclaw/agents/deployed', (req, res) => {
+  if (!fs.existsSync(TEMP_AGENTS_DIR)) return res.json([]);
+  const deployed = fs.readdirSync(TEMP_AGENTS_DIR)
+    .filter(d => fs.existsSync(path.join(TEMP_AGENTS_DIR, d, 'SOUL.md')))
+    .map(d => {
+      const soulPath = path.join(TEMP_AGENTS_DIR, d, 'SOUL.md');
+      const meta = path.join(TEMP_AGENTS_DIR, d, 'meta.json');
+      const info = fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8')) : {};
+      return { agentId: d, soulPath: soulPath.replace(ROOT, ''), deployedAt: info.deployedAt, name: info.name, category: info.category, role: info.role };
+    });
+  res.json(deployed);
+});
+
+// Deploy a temporary agent — downloads SOUL.md from GitHub and saves to agents/temp/
+app.post('/api/openclaw/agents/deploy', async (req, res) => {
+  const { agentId, agentPath, name, category, role } = req.body;
+  if (!agentId || !agentPath) return res.status(400).json({ error: 'agentId and agentPath required (e.g. "agents/productivity/orion/SOUL.md")' });
+
+  const rawUrl = `https://raw.githubusercontent.com/mergisi/awesome-openclaw-agents/main/${agentPath}`;
+  try {
+    const r = await axios.get(rawUrl, { timeout: 15000, responseType: 'text' });
+    const soulContent = r.data;
+    const destDir = path.join(TEMP_AGENTS_DIR, agentId);
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.writeFileSync(path.join(destDir, 'SOUL.md'), soulContent);
+    fs.writeFileSync(path.join(destDir, 'meta.json'), JSON.stringify({ agentId, name, category, role, agentPath, deployedAt: new Date().toISOString() }, null, 2));
+    console.log(`[OPENCLAW] Deployed agent: ${agentId} (${name || category})`);
+    io.emit('openclaw:deployed', { agentId, name, category, role });
+    res.json({ success: true, agentId, name, category, soulPath: `agents/temp/${agentId}/SOUL.md`, message: `${name || agentId} is ready. SOUL.md saved to agents/temp/${agentId}/` });
+  } catch (e) {
+    res.status(500).json({ error: `Could not fetch SOUL.md from GitHub: ${e.message}`, url: rawUrl });
+  }
+});
+
+// Undeploy — remove temp agent
+app.delete('/api/openclaw/agents/undeploy/:id', (req, res) => {
+  const destDir = path.join(TEMP_AGENTS_DIR, req.params.id);
+  if (!fs.existsSync(destDir)) return res.status(404).json({ error: 'Agent not deployed' });
+  fs.rmSync(destDir, { recursive: true, force: true });
+  console.log(`[OPENCLAW] Undeployed agent: ${req.params.id}`);
+  io.emit('openclaw:undeployed', { agentId: req.params.id });
+  res.json({ success: true, message: `${req.params.id} undeployed` });
+});
+
+// Use a deployed agent — chat with its SOUL.md as the system prompt
+app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  const soulPath = path.join(TEMP_AGENTS_DIR, req.params.id, 'SOUL.md');
+  if (!fs.existsSync(soulPath)) return res.status(404).json({ error: 'Agent not deployed. POST /api/openclaw/agents/deploy first.' });
+  const soul = fs.readFileSync(soulPath, 'utf8');
+  const metaPath = path.join(TEMP_AGENTS_DIR, req.params.id, 'meta.json');
+  const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : {};
+  try {
+    const reply = await callAI([{ role: 'user', content: message }], soul);
+    res.json({ agent: meta.name || req.params.id, category: meta.category, reply });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // =============================================================================
