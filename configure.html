@@ -350,6 +350,39 @@
       <input type="text" id="ownerAvailability" placeholder="e.g. Weekdays 7am–6pm AEDT, check Telegram in the morning">
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-title">☀️ Morning Briefing</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Your CIO compiles a personalised morning briefing every day and sends it to your email and Telegram. Tick what you want included — it only pulls from services you've configured.</p>
+    <div class="field">
+      <label>Personal Email <span>where the briefing lands — can be different from your Gmail send address</span></label>
+      <input type="text" id="briefingEmail" placeholder="you@gmail.com">
+    </div>
+    <div class="field">
+      <label>Send Time <span>24hr format, in your timezone</span></label>
+      <div style="display:flex;gap:12px;align-items:center">
+        <input type="time" id="briefingTime" value="07:00" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 12px;font-size:0.9rem">
+        <span style="font-size:0.82rem;color:var(--muted)">every morning</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>What to include <span>tick everything you want</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-decisions" checked> Decisions made yesterday</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-agents" checked> Agent status & focus</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-news" checked> Industry news (NewsAPI)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-revenue" checked> Revenue snapshot (Stripe)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-pipeline" checked> Sales pipeline (HubSpot)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-calendar" checked> Today's calendar events</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-risks" checked> Top risks flagged by CRO</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:400;cursor:pointer"><input type="checkbox" id="brief-ceo" checked> CEO's message for the day</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Custom briefing instructions <span>optional — tell the CIO exactly what you want to know each morning</span></label>
+      <textarea id="briefingCustom" placeholder="e.g. Always include competitor news. Highlight anything that needs my attention or a decision. Keep it under 500 words. Start with the most urgent item."></textarea>
+    </div>
+  </div>
 </div>
 
 <!-- STEP 3: Infrastructure -->
@@ -1108,6 +1141,12 @@ async function generatePackage() {
     ownerChallenge: val('ownerChallenge'),
     ownerCommStyle: val('ownerCommStyle') || 'direct',
     ownerAvailability: val('ownerAvailability'),
+    // Morning briefing
+    briefingEmail: val('briefingEmail'),
+    briefingTime: val('briefingTime') || '07:00',
+    briefingSections: ['decisions','agents','news','revenue','pipeline','calendar','risks','ceo']
+      .filter(s => document.getElementById('brief-' + s)?.checked).join(','),
+    briefingCustom: val('briefingCustom'),
     // Voice
     elevenlabsKey: val('elevenlabsKey'),
   };
@@ -1684,6 +1723,14 @@ OWNER_TWITTER="${c.ownerTwitter}"
 OWNER_INDUSTRY="${c.ownerIndustry}"
 OWNER_COMPETITORS="${c.ownerCompetitors}"
 OWNER_COMM_STYLE="${c.ownerCommStyle}"
+
+# =============================================================================
+# MORNING BRIEFING — sent daily via Gmail + Telegram
+# =============================================================================
+BRIEFING_EMAIL="${c.briefingEmail}"
+BRIEFING_TIME="${c.briefingTime}"
+BRIEFING_SECTIONS="${c.briefingSections}"
+BRIEFING_CUSTOM="${c.briefingCustom}"
 `;
 }
 
@@ -1947,18 +1994,104 @@ function soulMd(c) {
 }
 
 function orgChartJson(c) {
+  // All agents share the full skill pool — no skill is locked to one agent
+  const sharedSkillPool = [
+    { name: 'opencli-rs',       desc: 'Browser automation — Chrome, Gmail, Discord, WhatsApp, Telegram via Rust CLI' },
+    { name: 'firecrawl-intel',  desc: 'Web scraping, competitor monitoring, content extraction' },
+    { name: 'gmail-send',       desc: 'Send emails as company — outreach, invoices, contracts, reports' },
+    { name: 'google-drive',     desc: 'Create folders, upload/download files, share documents' },
+    { name: 'google-docs',      desc: 'Create and edit documents, write reports, draft contracts' },
+    { name: 'google-sheets',    desc: 'Read/write spreadsheet data, log decisions, financial models' },
+    { name: 'google-calendar',  desc: 'Create events, schedule reviews, block time, check availability' },
+    { name: 'notion-log',       desc: 'Create pages, update databases, log decisions to workspace' },
+    { name: 'slack-post',       desc: 'Post updates, alerts, and reports to Slack channels' },
+    { name: 'telegram-notify',  desc: 'Send alerts, briefings, and status updates to Telegram' },
+    { name: 'supabase-query',   desc: 'Query and write to Supabase database' },
+    { name: 'hubspot-crm',      desc: 'Create contacts, log deals, update pipeline, track interactions' },
+    { name: 'stripe-read',      desc: 'Read revenue, customers, subscriptions, and payment data' },
+    { name: 'perplexity-search',desc: 'Live AI-powered web research and real-time information retrieval' },
+    { name: 'news-intel',       desc: 'Monitor industry news, keyword alerts, competitor coverage' },
+    { name: 'github-ops',       desc: 'Create repos, push code, manage issues, trigger workflows' },
+    { name: 'superpowers-core', desc: '400+ agent capabilities via SkillsMP marketplace' },
+  ];
+
+  const agentSkillFocus = {
+    CEO:  ['gmail-send','telegram-notify','slack-post','google-docs','perplexity-search'],
+    CFO:  ['stripe-read','google-sheets','supabase-query','gmail-send','notion-log'],
+    COO:  ['google-calendar','slack-post','notion-log','supabase-query','github-ops'],
+    CTO:  ['github-ops','opencli-rs','superpowers-core','google-drive','supabase-query'],
+    CSO:  ['perplexity-search','firecrawl-intel','news-intel','hubspot-crm','google-docs'],
+    CRO:  ['firecrawl-intel','news-intel','supabase-query','slack-post','google-sheets'],
+    CIO:  ['perplexity-search','news-intel','firecrawl-intel','google-sheets','supabase-query'],
+    CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm'],
+    CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs'],
+    CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log'],
+  };
+
   return JSON.stringify({
     company: c.companyName, owner: c.ownerName,
     generated: new Date().toISOString(),
     hierarchy: { final_authority: 'CEO', veto_powers: ['CRO','CFO','CLO'] },
+    skill_policy: 'shared — all agents have access to the full skill pool. Primary skills listed per agent are defaults, not restrictions.',
+    skill_pool: sharedSkillPool,
     agents: AGENTS.filter(a => c.agents.includes(a.id)).map(a => ({
-      id: a.id, title: a.title, persona: a.desc, status: 'active'
+      id: a.id, title: a.title, persona: a.desc, status: 'active',
+      primary_skills: agentSkillFocus[a.id] || [],
+      access: 'full_skill_pool',
     }))
   }, null, 2);
 }
 
 function skillsList() {
-  return `# OmniClaw — SkillsMP Fast-Track List\n# Format: slug | description | priority\n\nopenclaw/self-improvement | Agent self-improvement loop | CRITICAL\ndiegosouzapw/ai-engineer | RAG and agent architecture | CRITICAL\nmcp-server-builder | Build MCP servers | CRITICAL\nbcastelino/ai-product | GDocs, GMail automation | HIGH\nfirecrawl-intel | Web scraping, research | HIGH\ntelegram-notifier | Send reports to Telegram | HIGH\ngithub-integration | Create repos, push code | HIGH\nsupabase-query | Query Supabase databases | HIGH\n`;
+  return `# OmniClaw — Shared Skill Pool
+# All agents have access to ALL skills. Primary skills per agent are defaults, not limits.
+# Format: slug | description | priority | install_command
+
+# =============================================================================
+# CORE RUNTIME — Install first
+# =============================================================================
+opencli-rs              | Browser automation (Chrome, Gmail, Discord, WhatsApp, Telegram) | CRITICAL | cargo install opencli-rs
+openclaw/self-improvement | Agent self-improvement loop | CRITICAL | skillsmp install openclaw/self-improvement
+mcp-server-builder      | Build and run MCP servers for skill extension | CRITICAL | skillsmp install mcp-server-builder
+
+# =============================================================================
+# COMMUNICATION SKILLS
+# =============================================================================
+telegram-notifier       | Send structured reports to Telegram | HIGH | skillsmp install telegram-notifier
+gmail-dispatch          | Send/draft emails via Gmail API | HIGH | skillsmp install bcastelino/ai-product
+slack-poster            | Post updates to Slack channels | HIGH | skillsmp install slack-poster
+discord-bridge          | Post to Discord channels and DMs | MEDIUM | skillsmp install discord-bridge
+
+# =============================================================================
+# DOCUMENT & DATA SKILLS
+# =============================================================================
+google-docs-writer      | Create and edit Google Docs | HIGH | skillsmp install bcastelino/ai-product
+google-sheets-logger    | Read/write Google Sheets data | HIGH | skillsmp install bcastelino/ai-product
+google-drive-manager    | Upload/download/organise Drive files | HIGH | skillsmp install bcastelino/ai-product
+google-calendar-ops     | Create events, check availability | MEDIUM | skillsmp install bcastelino/ai-product
+notion-writer           | Create Notion pages and update databases | HIGH | skillsmp install notion-writer
+supabase-query          | Query and mutate Supabase tables | HIGH | skillsmp install supabase-query
+
+# =============================================================================
+# RESEARCH & INTELLIGENCE SKILLS
+# =============================================================================
+firecrawl-intel         | Web scraping, competitor monitoring, content extraction | HIGH | skillsmp install firecrawl-intel
+perplexity-search       | Live AI-powered web research | HIGH | skillsmp install perplexity-search
+news-monitor            | Industry news monitoring and keyword alerts | MEDIUM | skillsmp install news-monitor
+diegosouzapw/ai-engineer | RAG pipelines and agent architecture | HIGH | skillsmp install diegosouzapw/ai-engineer
+
+# =============================================================================
+# CRM & FINANCE SKILLS
+# =============================================================================
+hubspot-crm             | Create contacts, log deals, track pipeline | HIGH | skillsmp install hubspot-crm
+stripe-reader           | Read revenue, customers, subscriptions | HIGH | skillsmp install stripe-reader
+
+# =============================================================================
+# DEV & OPERATIONS SKILLS
+# =============================================================================
+github-integration      | Create repos, push code, manage issues, trigger CI | HIGH | skillsmp install github-integration
+superpowers-core        | 400+ agent capabilities via SkillsMP marketplace | HIGH | skillsmp install superpowers-core
+`;
 }
 
 function gitignoreContent() {

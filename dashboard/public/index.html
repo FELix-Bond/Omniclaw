@@ -156,6 +156,8 @@
     <div class="nav-item" onclick="showPanel('heartbeat')"><span class="nav-icon">💓</span> Heartbeat</div>
     <div class="nav-item" onclick="showPanel('memory')"><span class="nav-icon">🧠</span> Memory</div>
     <div class="nav-item" onclick="showPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
+    <div class="nav-item" onclick="showPanel('skills')"><span class="nav-icon">🛠️</span> Skills</div>
+    <div class="nav-item" onclick="showPanel('integrations')"><span class="nav-icon">🔌</span> Integrations</div>
     <a class="nav-link" href="https://openclaw.ai" target="_blank"><span class="nav-icon">🦾</span> OpenClaw ↗</a>
     <a class="nav-link" href="https://github.com/FELix-Bond/Omniclaw" target="_blank"><span class="nav-icon">🔗</span> GitHub ↗</a>
   </nav>
@@ -341,6 +343,37 @@
           <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
         </div>
       </div>
+    <!-- SKILLS PANEL -->
+    <div class="panel" id="panel-skills">
+      <div style="max-width:800px">
+        <h3 style="margin:0 0 8px">Shared Skill Pool</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 20px">All agents have access to every skill. Primary skills per agent are defaults, not restrictions. OpenCLI-rs enables browser automation across all agents.</p>
+        <div style="display:grid;gap:10px" id="skillsGrid">
+          <div style="color:var(--muted);font-size:0.85rem">Loading skill pool...</div>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+          <div style="font-weight:600;margin-bottom:8px">🦀 OpenCLI-rs — Browser Automation</div>
+          <p style="font-size:0.82rem;color:var(--muted);margin:0 0 10px">Built in Rust for performance. Gives every agent the ability to control Chrome, send emails via Gmail web, interact with Discord, WhatsApp, and Telegram directly.</p>
+          <code style="font-size:0.8rem;color:var(--accent)">cargo install opencli-rs</code>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--muted)">Requires Rust: <code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INTEGRATIONS STATUS PANEL -->
+    <div class="panel" id="panel-integrations">
+      <div style="max-width:700px">
+        <h3 style="margin:0 0 8px">Integration Status</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 20px">Live status of all configured services. Add missing keys to your <code>.env</code> file and restart the dashboard.</p>
+        <div style="display:grid;gap:8px" id="integrationsGrid">
+          <div style="color:var(--muted);font-size:0.85rem">Loading...</div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn-sm btn-primary" onclick="sendBriefingNow()">☀️ Send Briefing Now</button>
+          <button class="btn-sm" onclick="loadIntegrations()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:0.82rem">Refresh</button>
+        </div>
+        <div id="briefingStatus" style="margin-top:10px;font-size:0.82rem;color:var(--muted)"></div>
+      </div>
     </div>
 
   </div>
@@ -373,11 +406,13 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + id)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
-  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI' };
+  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI', skills: 'Skill Pool', integrations: 'Integrations' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
   if (id === 'memory') loadMemory();
   if (id === 'github') refreshGithub();
   if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
+  if (id === 'integrations') loadIntegrations();
+  if (id === 'skills') loadSkills();
 }
 
 // =============================================================================
@@ -648,6 +683,64 @@ async function loadChatHistory() {
     msgs.forEach(m => appendChatBubble(m));
   } catch(e) {}
 }
+
+// Integrations status panel
+async function loadIntegrations() {
+  try {
+    const r = await fetch('/api/integrations/status');
+    const d = await r.json();
+    const labels = {
+      telegram:'Telegram',discord:'Discord',slack:'Slack',gmail:'Gmail (send)',
+      google_suite:'Google Suite (Drive/Docs/Sheets/Calendar)',google_oauth_ready:'Google OAuth ready',
+      notion:'Notion',hubspot:'HubSpot CRM',stripe:'Stripe',
+      firecrawl:'Firecrawl',perplexity:'Perplexity',elevenlabs:'ElevenLabs',supabase:'Supabase',
+    };
+    const grid = document.getElementById('integrationsGrid');
+    grid.innerHTML = Object.entries(labels).map(([k,label]) => {
+      const on = d[k];
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+        <span style="font-size:0.85rem">${label}</span>
+        <span style="font-size:0.78rem;padding:3px 10px;border-radius:20px;background:${on?'#1a3a1a':'#2a1a1a'};color:${on?'#6bcb77':'#e07070'};border:1px solid ${on?'#2d6a2d':'#5a2a2a'}">${on?'✓ Connected':'✗ Not configured'}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('integrationsGrid').innerHTML = '<div style="color:var(--muted)">Could not load integration status.</div>';
+  }
+}
+
+async function sendBriefingNow() {
+  document.getElementById('briefingStatus').textContent = 'Compiling briefing... this takes ~10 seconds.';
+  try {
+    await fetch('/api/briefing/send', { method: 'POST' });
+    document.getElementById('briefingStatus').textContent = '✓ Briefing sent! Check your email and Telegram.';
+  } catch(e) {
+    document.getElementById('briefingStatus').textContent = 'Error: ' + e.message;
+  }
+}
+
+// Skills panel
+async function loadSkills() {
+  try {
+    const r = await fetch('/api/org-chart');
+    const d = await r.json();
+    const pool = d.skill_pool || [];
+    const grid = document.getElementById('skillsGrid');
+    if (!pool.length) { grid.innerHTML = '<div style="color:var(--muted)">Skills loaded from configs/org-chart.json</div>'; return; }
+    grid.innerHTML = pool.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+        <div><div style="font-size:0.85rem;font-weight:500;color:var(--text)">${s.name}</div><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">${s.desc}</div></div>
+        <span style="font-size:0.72rem;color:var(--accent);background:var(--surface);padding:2px 8px;border-radius:10px;border:1px solid var(--border);white-space:nowrap;margin-left:12px">All agents</span>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+// Expose org-chart to frontend
+// (add API route to server.js would be needed — for now falls back gracefully)
+
+socket.on('briefing:sent', (data) => {
+  const el = document.getElementById('briefingStatus');
+  if (el) el.textContent = `Last briefing sent: ${new Date(data.timestamp).toLocaleTimeString()}`;
+});
 
 // Init
 loadStatus();

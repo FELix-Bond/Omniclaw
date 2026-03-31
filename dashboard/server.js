@@ -110,6 +110,13 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Org chart (includes shared skill pool)
+app.get('/api/org-chart', (req, res) => {
+  const chartPath = path.join(CONFIGS_DIR, 'org-chart.json');
+  if (fs.existsSync(chartPath)) return res.json(JSON.parse(fs.readFileSync(chartPath, 'utf8')));
+  res.json({ agents: Object.values(state.agents), skill_pool: [] });
+});
+
 // All agents
 app.get('/api/agents', (req, res) => {
   res.json(Object.values(state.agents));
@@ -674,6 +681,180 @@ app.get('/api/integrations/status', (req, res) => {
 });
 
 // =============================================================================
+// MORNING BRIEFING — CIO compiles and sends daily via Gmail + Telegram
+// =============================================================================
+async function compileBriefing() {
+  const sections = (process.env.BRIEFING_SECTIONS || 'decisions,agents,news,ceo').split(',');
+  const custom = process.env.BRIEFING_CUSTOM || '';
+  const owner = state.owner;
+  const company = state.company;
+  const today = new Date().toLocaleDateString('en-AU', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  const parts = [];
+
+  // Decisions from yesterday
+  if (sections.includes('decisions')) {
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    const recent = state.decisions.filter(d => new Date(d.timestamp).toDateString() === yesterday);
+    if (recent.length) {
+      parts.push(`DECISIONS YESTERDAY (${recent.length}):\n` + recent.map(d => `• ${d.objective} — ${d.status}`).join('\n'));
+    } else {
+      parts.push('DECISIONS YESTERDAY: None logged.');
+    }
+  }
+
+  // Agent status
+  if (sections.includes('agents')) {
+    const activeAgents = Object.values(state.agents).filter(a => a.lastActive);
+    parts.push(`AGENT STATUS (${Object.keys(state.agents).length} active):\n` +
+      Object.values(state.agents).map(a => `• ${a.id}: ${a.currentTask || 'Idle'}`).join('\n'));
+  }
+
+  // Stripe revenue snapshot
+  if (sections.includes('revenue') && process.env.STRIPE_API_KEY && stripe) {
+    try {
+      const stripeClient = stripe(process.env.STRIPE_API_KEY);
+      const charges = await stripeClient.charges.list({ limit: 10, created: { gte: Math.floor((Date.now() - 86400000*30)/1000) } });
+      const total = charges.data.reduce((s, c) => s + (c.amount_captured || 0), 0) / 100;
+      parts.push(`REVENUE (last 30 days): $${total.toFixed(2)} across ${charges.data.length} charges`);
+    } catch (e) { /* Stripe not accessible */ }
+  }
+
+  // HubSpot pipeline
+  if (sections.includes('pipeline') && process.env.HUBSPOT_API_KEY) {
+    try {
+      const r = await axios.get('https://api.hubapi.com/crm/v3/objects/deals?limit=5&properties=dealname,amount,dealstage',
+        { headers: { authorization: `Bearer ${process.env.HUBSPOT_API_KEY}` }, timeout: 8000 });
+      const deals = r.data.results || [];
+      if (deals.length) parts.push(`PIPELINE (top deals):\n` + deals.map(d => `• ${d.properties.dealname || 'Deal'} — ${d.properties.dealstage || '?'} — $${d.properties.amount || '0'}`).join('\n'));
+    } catch (e) { /* HubSpot not accessible */ }
+  }
+
+  // Google Calendar — today's events
+  if (sections.includes('calendar')) {
+    const auth = getGoogleAuth();
+    if (auth && fs.existsSync(GOOGLE_TOKEN_PATH)) {
+      try {
+        const calendar = google.calendar({ version: 'v3', auth });
+        const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+        const endOfDay   = new Date(); endOfDay.setHours(23,59,59,999);
+        const evts = await calendar.events.list({
+          calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+          timeMin: startOfDay.toISOString(), timeMax: endOfDay.toISOString(),
+          singleEvents: true, orderBy: 'startTime',
+        });
+        const events = evts.data.items || [];
+        if (events.length) parts.push(`CALENDAR TODAY:\n` + events.map(e => `• ${(e.start.dateTime || e.start.date || '').slice(11,16)} ${e.summary}`).join('\n'));
+        else parts.push('CALENDAR TODAY: No events scheduled.');
+      } catch (e) { /* Calendar not accessible */ }
+    }
+  }
+
+  // Industry news headlines
+  if (sections.includes('news') && process.env.NEWSAPI_KEY && process.env.OWNER_INDUSTRY) {
+    try {
+      const r = await axios.get('https://newsapi.org/v2/everything', {
+        params: { q: process.env.OWNER_INDUSTRY, sortBy: 'publishedAt', pageSize: 5, language: 'en', apiKey: process.env.NEWSAPI_KEY },
+        timeout: 8000,
+      });
+      const articles = r.data.articles || [];
+      if (articles.length) parts.push(`INDUSTRY NEWS (${process.env.OWNER_INDUSTRY}):\n` + articles.map(a => `• ${a.title} — ${a.source.name}`).join('\n'));
+    } catch (e) { /* News not accessible */ }
+  }
+
+  // CRO risks (pull from recent decisions)
+  if (sections.includes('risks')) {
+    const riskDecisions = state.decisions.filter(d => d.agentInputs?.CRO).slice(-3);
+    if (riskDecisions.length) parts.push(`RISKS FLAGGED BY CRO:\n` + riskDecisions.map(d => `• ${d.objective}`).join('\n'));
+  }
+
+  // Compose with AI (CIO synthesises into a clean briefing)
+  const rawData = parts.join('\n\n');
+  const today_str = today;
+  const cioPrompt = `You are the CIO of ${company}, compiling the daily morning briefing for ${owner}.
+
+Date: ${today_str}
+${custom ? 'Custom instructions from ' + owner + ': ' + custom : ''}
+
+Raw data from company systems:
+${rawData || 'No data available from connected systems yet.'}
+
+Write a clear, concise morning briefing. Lead with the most important item. Use plain English — no corporate waffle.
+${custom || 'Keep it under 400 words. Use short sections with bold headers. End with one clear action item for the day.'}`;
+
+  const briefingText = await callAI([{ role: 'user', content: `Compile morning briefing for ${today_str}` }], cioPrompt);
+
+  return {
+    subject: `☀️ ${company} Morning Briefing — ${today}`,
+    body: briefingText,
+    date: today,
+  };
+}
+
+async function sendMorningBriefing() {
+  console.log('[BRIEFING] Compiling morning briefing...');
+  try {
+    const briefing = await compileBriefing();
+    let sent = false;
+
+    // Send via Gmail
+    const mailer = getMailer();
+    const toEmail = process.env.BRIEFING_EMAIL || process.env.GMAIL_ADDRESS;
+    if (mailer && toEmail) {
+      await mailer.sendMail({
+        from: `CIO — ${state.company} <${process.env.GMAIL_ADDRESS}>`,
+        to: toEmail,
+        subject: briefing.subject,
+        text: briefing.body,
+      });
+      console.log(`[BRIEFING] Sent to ${toEmail} via Gmail`);
+      sent = true;
+    }
+
+    // Send via Telegram
+    const tgChatId = process.env.TG_CHAT_ID;
+    if (tgChatId && process.env.TG_TOKEN) {
+      const tgText = `${briefing.subject}\n\n${briefing.body}`;
+      // Split if too long for Telegram (4096 char limit)
+      const chunks = tgText.match(/.{1,3800}/gs) || [tgText];
+      for (const chunk of chunks) await sendTelegram(tgChatId, chunk);
+      console.log('[BRIEFING] Sent via Telegram');
+      sent = true;
+    }
+
+    if (!sent) console.log('[BRIEFING] No delivery channel configured (add GMAIL_ADDRESS or TG_TOKEN + TG_CHAT_ID)');
+    io.emit('briefing:sent', { timestamp: new Date().toISOString(), subject: briefing.subject });
+  } catch (e) {
+    console.log('[BRIEFING] Error:', e.message);
+  }
+}
+
+// Schedule morning briefing cron
+function scheduleBriefing() {
+  const timeStr = process.env.BRIEFING_TIME || '07:00';
+  const [hour, minute] = timeStr.split(':').map(Number);
+  if (isNaN(hour) || isNaN(minute)) return;
+  const cronExprBriefing = `${minute} ${hour} * * *`;
+  cron.schedule(cronExprBriefing, sendMorningBriefing, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
+  console.log(`   Briefing:  Daily at ${timeStr} → ${process.env.BRIEFING_EMAIL || process.env.TG_CHAT_ID ? 'Email + Telegram' : 'not configured'}`);
+}
+
+// Manual trigger endpoint
+app.post('/api/briefing/send', async (req, res) => {
+  res.json({ status: 'sending', message: 'Morning briefing compiling...' });
+  sendMorningBriefing();
+});
+
+app.get('/api/briefing/preview', async (req, res) => {
+  try {
+    const briefing = await compileBriefing();
+    res.json(briefing);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =============================================================================
 // AUTO-UPDATE CHECK
 // =============================================================================
 const VERSION_FILE = path.join(ROOT, 'VERSION');
@@ -738,6 +919,9 @@ server.listen(PORT, () => {
   if (process.env.FIRECRAWL_API_KEY) integrations.push('Firecrawl');
   if (process.env.PERPLEXITY_API_KEY)integrations.push('Perplexity');
   if (integrations.length) console.log(`   Suite:     ${integrations.join(' · ')}`);
+
+  // Morning briefing scheduler
+  scheduleBriefing();
 
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
