@@ -160,7 +160,7 @@
   <div class="logo">🦾</div>
   <div>
     <h1>OmniClaw Configurator</h1>
-    <p>Zero-Human Company Setup — Configure once, deploy anywhere.</p>
+    <p>Zero-Human Company Setup — Configure once, deploy anywhere. Powered by <strong>TommyClaw</strong>, your AI CEO.</p>
   </div>
 </header>
 
@@ -693,7 +693,7 @@
 
 <script>
 const AGENTS = [
-  { id: 'CEO', name: 'CEO AI', title: 'Chief Executive Officer', desc: 'The Operator — ultimate decision-maker', always: true },
+  { id: 'CEO', name: 'TommyClaw', title: 'Chief Executive Officer', desc: 'Your AI CEO — the Operator, ultimate decision-maker', always: true },
   { id: 'CFO', name: 'CFO AI', title: 'Chief Financial Officer', desc: 'The Capital Allocator — financial strategy' },
   { id: 'COO', name: 'COO AI', title: 'Chief Operating Officer', desc: 'The Executor — operations & delivery' },
   { id: 'CTO', name: 'CTO AI', title: 'Chief Technology Officer', desc: 'The Architect — systems & technical execution' },
@@ -955,6 +955,10 @@ async function generatePackage() {
     btn.textContent = '✅ Downloaded!'; btn.disabled = false;
 
     document.getElementById('generatedOutput').style.display = '';
+    // Auto-scroll to the install section
+    setTimeout(() => {
+      document.getElementById('generatedOutput').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
     const launchInstructions = {
       macos: `<strong>macOS:</strong> Unzip → double-click <code>Install OmniClaw.command</code><br><small style="color:var(--muted)">If blocked by Gatekeeper: right-click → Open → Open (one-time only)</small>`,
       linux: `<strong>Linux:</strong> Unzip → <code>chmod +x install-linux.sh && ./install-linux.sh</code>`,

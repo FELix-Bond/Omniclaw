@@ -256,11 +256,18 @@ const chatHistory = [];
 function getSystemPrompt() {
   const ceo = state.agents['CEO'];
   const profile = readAgentProfile('CEO') || '';
-  return `You are the CEO AI of ${state.company}, an autonomous executive agent.
-Your role: ${ceo?.persona || 'The Operator — final decision-maker'}.
+  return `You are TommyClaw, the AI CEO of ${state.company}, talking directly with ${state.owner}. You are part of the OmniClaw platform — an autonomous executive AI stack. Your website is tommyclaw.com.
+
+HONESTY RULES — never break these:
+- Never claim capabilities you don't have. You cannot send emails, browse the web, access servers, run code, or control any external system.
+- Never confirm something just because the user states it. If you don't know, say so.
+- Never invent domain names, email addresses, credentials, or infrastructure details unless explicitly told them in this conversation.
+- If asked whether you have access to something and you don't — say no clearly.
+
+PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it.
+
 Company: ${state.company} | Owner: ${state.owner}
-${profile ? '\nYour full persona:\n' + profile.slice(0, 1500) : ''}
-Respond concisely and decisively as a CEO would. For complex decisions, briefly note which C-Suite agents you would consult.`;
+${profile ? '\n' + profile.slice(0, 600) : ''}`;
 }
 
 async function callAI(messages) {
@@ -392,7 +399,7 @@ async function pollTelegram() {
       try {
         const msgs = [{ role: 'user', content: text }];
         const reply = await callAI(msgs);
-        await sendTelegram(chatId, `*CEO AI:* ${reply}`);
+        await sendTelegram(chatId, reply);
         io.emit('chat:message', { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
         chatHistory.push({ role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
         chatHistory.push({ role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
@@ -405,6 +412,33 @@ async function pollTelegram() {
   }
   setTimeout(pollTelegram, 1000);
 }
+
+// =============================================================================
+// AUTO-UPDATE CHECK
+// =============================================================================
+const VERSION_FILE = path.join(ROOT, 'VERSION');
+let updateAvailable = null;
+
+async function checkForUpdate() {
+  try {
+    const localVersion = fs.existsSync(VERSION_FILE)
+      ? fs.readFileSync(VERSION_FILE, 'utf8').trim()
+      : '0.0.0';
+    const r = await axios.get('https://raw.githubusercontent.com/FELix-Bond/Omniclaw/main/VERSION', { timeout: 8000 });
+    const latestVersion = (r.data || '').trim();
+    if (latestVersion && latestVersion !== localVersion) {
+      updateAvailable = { current: localVersion, latest: latestVersion };
+      console.log(`   Update:    v${localVersion} → v${latestVersion} available — run ./update.sh`);
+      io.emit('update:available', updateAvailable);
+    }
+  } catch (_) { /* offline or rate-limited — silently skip */ }
+}
+
+app.get('/api/update/check', async (req, res) => {
+  await checkForUpdate();
+  const localVersion = fs.existsSync(VERSION_FILE) ? fs.readFileSync(VERSION_FILE, 'utf8').trim() : '0.0.0';
+  res.json({ current: localVersion, update: updateAvailable });
+});
 
 // =============================================================================
 // INIT & START
@@ -429,5 +463,9 @@ server.listen(PORT, () => {
 
   // Detect which AI provider is active
   const chain = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
-  console.log(`   AI Chain:  ${chain.join(' → ') || 'Not configured'}\n`);
+  console.log(`   AI Chain:  ${chain.join(' → ') || 'Not configured'}`);
+
+  // Check for updates (non-blocking, fires 5s after startup)
+  setTimeout(checkForUpdate, 5000);
+  console.log('');
 });
