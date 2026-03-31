@@ -166,11 +166,12 @@
 
 <div class="progress-bar" id="progressBar">
   <div class="step-pill active" onclick="goToStep(0)"><span class="num">1</span> Company Identity</div>
-  <div class="step-pill" onclick="goToStep(1)"><span class="num">2</span> Infrastructure</div>
-  <div class="step-pill" onclick="goToStep(2)"><span class="num">3</span> C-Suite Agents</div>
-  <div class="step-pill" onclick="goToStep(3)"><span class="num">4</span> Integrations</div>
-  <div class="step-pill" onclick="goToStep(4)"><span class="num">5</span> GitHub & Deploy</div>
-  <div class="step-pill" onclick="goToStep(5)"><span class="num">6</span> Review & Generate</div>
+  <div class="step-pill" onclick="goToStep(1)"><span class="num">2</span> Know You</div>
+  <div class="step-pill" onclick="goToStep(2)"><span class="num">3</span> Infrastructure</div>
+  <div class="step-pill" onclick="goToStep(3)"><span class="num">4</span> C-Suite Agents</div>
+  <div class="step-pill" onclick="goToStep(4)"><span class="num">5</span> Integrations</div>
+  <div class="step-pill" onclick="goToStep(5)"><span class="num">6</span> GitHub & Deploy</div>
+  <div class="step-pill" onclick="goToStep(6)"><span class="num">7</span> Review & Generate</div>
 </div>
 
 <main>
@@ -288,8 +289,71 @@
   </div>
 </div>
 
-<!-- STEP 2: Infrastructure -->
+<!-- STEP 2: Get to Know You -->
 <div class="section" id="step-1">
+  <div class="section-header">
+    <h2>Get to Know You</h2>
+    <p>Help your C-Suite agents build a picture of who you are and what you're building. The more context they have, the sharper their advice. All of this is stored in your private <code>memory/OWNER.md</code> — never sent anywhere.</p>
+  </div>
+  <div class="info-box">Optional but highly recommended — skip any fields you'd rather not fill in now. You can update <code>memory/OWNER.md</code> directly at any time.</div>
+  <div class="card">
+    <div class="card-title">About You</div>
+    <div class="field">
+      <label>Your Background / Bio <span>2–4 sentences — who are you, what's your background?</span></label>
+      <textarea id="ownerBio" placeholder="e.g. Serial founder with 15 years in fintech. Previously built and sold two SaaS platforms. Now building AI-native business infrastructure."></textarea>
+    </div>
+    <div class="field">
+      <label>Your LinkedIn Profile <span>optional — agents use this to understand your network and expertise</span></label>
+      <input type="text" id="ownerLinkedIn" placeholder="https://linkedin.com/in/yourname">
+    </div>
+    <div class="field">
+      <label>Your Twitter / X Profile <span>optional</span></label>
+      <input type="text" id="ownerTwitter" placeholder="https://x.com/yourhandle">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">About Your Business</div>
+    <div class="field">
+      <label>Company Website <span>agents will use this to understand your product, positioning and brand</span></label>
+      <input type="text" id="ownerWebsite" placeholder="https://yourcompany.com">
+    </div>
+    <div class="field">
+      <label>Industry / Sector</label>
+      <input type="text" id="ownerIndustry" placeholder="e.g. B2B SaaS, E-Commerce, Real Estate, FinTech, Health Tech">
+    </div>
+    <div class="field">
+      <label>Top 2–3 Competitors <span>optional — helps CSO and CRO with strategic positioning</span></label>
+      <input type="text" id="ownerCompetitors" placeholder="e.g. Salesforce, HubSpot, Monday.com">
+    </div>
+    <div class="field">
+      <label>Current Main Goals / Projects <span>what are you actually trying to achieve in the next 90 days?</span></label>
+      <textarea id="ownerGoals" placeholder="e.g. Launch v1 of the platform, sign first 10 paying customers, raise a seed round."></textarea>
+    </div>
+    <div class="field">
+      <label>Biggest Current Challenge <span>optional — agents will factor this into all recommendations</span></label>
+      <textarea id="ownerChallenge" placeholder="e.g. We have a strong product but weak outbound. Need to build a repeatable sales motion."></textarea>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Communication Style</div>
+    <div class="field">
+      <label>How do you prefer your agents to communicate with you?</label>
+      <select id="ownerCommStyle">
+        <option value="direct">Direct & concise — bullet points, no waffle</option>
+        <option value="conversational">Conversational — talk to me like a co-founder</option>
+        <option value="formal">Formal — structured reports and clear headings</option>
+        <option value="coaching">Coaching — challenge my thinking, ask questions back</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Time Zone Availability <span>optional — when should agents prioritise sending you briefings?</span></label>
+      <input type="text" id="ownerAvailability" placeholder="e.g. Weekdays 7am–6pm AEDT, check Telegram in the morning">
+    </div>
+  </div>
+</div>
+
+<!-- STEP 3: Infrastructure -->
+<div class="section" id="step-2">
   <div class="section-header">
     <h2>Infrastructure</h2>
     <p>Where will this company run? Configure the target machine, runtime, and local paths.</p>
@@ -426,8 +490,8 @@
   </div>
 </div>
 
-<!-- STEP 3: C-Suite Agents -->
-<div class="section" id="step-2">
+<!-- STEP 4: C-Suite Agents -->
+<div class="section" id="step-3">
   <div class="section-header">
     <h2>C-Suite Agents</h2>
     <p>Select which executive agents to deploy. Each agent gets its own <code>.md</code> persona file and is registered in the Paperclip org chart.</p>
@@ -453,8 +517,8 @@
   </div>
 </div>
 
-<!-- STEP 4: Integrations -->
-<div class="section" id="step-3">
+<!-- STEP 5: Integrations -->
+<div class="section" id="step-4">
   <div class="section-header">
     <h2>Integrations & API Keys</h2>
     <p>All keys are stored locally in your <code>.env</code> file — never committed to GitHub.</p>
@@ -519,6 +583,11 @@
       <label>SkillsMP API Key <span>optional, dynamic skill discovery — <a href="https://skillsmp.com/settings" target="_blank" style="color:var(--accent)">Get key →</a></span></label>
       <input type="password" id="skillsmpKey" placeholder="smp-...">
     </div>
+    <div class="field">
+      <label>ElevenLabs API Key <span class="badge-free">FREE tier</span> <span>— voice for your agents — <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" style="color:var(--accent)">Get free key →</a></span></label>
+      <input type="password" id="elevenlabsKey" placeholder="sk_...">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Each C-Suite agent gets their own voice. Free tier gives 10,000 characters/month.</div>
+    </div>
   </div>
 
   <div class="card">
@@ -564,8 +633,8 @@
   </div>
 </div>
 
-<!-- STEP 5: GitHub -->
-<div class="section" id="step-4">
+<!-- STEP 6: GitHub -->
+<div class="section" id="step-5">
   <div class="section-header">
     <h2>GitHub & Deployment</h2>
     <p>Connect your GitHub account to auto-create the repository and enable CI/CD workflows.</p>
@@ -612,8 +681,8 @@
   </div>
 </div>
 
-<!-- STEP 6: Review & Generate -->
-<div class="section" id="step-5">
+<!-- STEP 7: Review & Generate -->
+<div class="section" id="step-6">
   <div class="section-header">
     <h2>Review & Generate</h2>
     <p>Everything looks good. Click generate to download your complete, pre-configured deploy package.</p>
@@ -692,21 +761,35 @@
 </div>
 
 <script>
+// ElevenLabs voice options (free voices, no cloning required)
+const VOICES = [
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam — deep, authoritative male' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni — warm, confident male' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold — crisp, decisive male' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh — deep, grounded male' },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam — raspy, direct male' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel — calm, professional female' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella — warm, engaging female' },
+  { id: 'MF3mGyEYCl7XYWbV9V9L', name: 'Elli — sharp, energetic female' },
+  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi — strong, confident female' },
+  { id: 'jBpfuIE2acCO8z3wKNLl', name: 'Gigi — friendly, upbeat female' },
+];
+
 const AGENTS = [
-  { id: 'CEO', name: 'TommyClaw', title: 'Chief Executive Officer', desc: 'Your AI CEO — the Operator, ultimate decision-maker', always: true },
-  { id: 'CFO', name: 'CFO AI', title: 'Chief Financial Officer', desc: 'The Capital Allocator — financial strategy' },
-  { id: 'COO', name: 'COO AI', title: 'Chief Operating Officer', desc: 'The Executor — operations & delivery' },
-  { id: 'CTO', name: 'CTO AI', title: 'Chief Technology Officer', desc: 'The Architect — systems & technical execution' },
-  { id: 'CSO', name: 'CSO AI', title: 'Chief Strategy Officer', desc: 'The Strategist — long-term positioning' },
-  { id: 'CRO', name: 'CRO AI', title: 'Chief Risk Officer', desc: 'The Protector — risk & downside' },
-  { id: 'CIO', name: 'CIO AI', title: 'Chief Information Officer', desc: 'The Intelligence Layer — data & analytics' },
-  { id: 'CPO', name: 'CPO AI', title: 'Chief Product Officer', desc: 'The Builder — product & UX' },
-  { id: 'CHRO', name: 'CHRO AI', title: 'Chief HR Officer', desc: 'The Culture Builder — talent & org' },
-  { id: 'CLO', name: 'CLO AI', title: 'Chief Legal Officer', desc: 'The Guardian — legal & compliance' },
+  { id: 'CEO', name: 'TommyClaw', title: 'Chief Executive Officer', desc: 'Your AI CEO — the Operator, ultimate decision-maker', always: true, defaultVoice: 'pNInz6obpgDQGcFmaJgB' },
+  { id: 'CFO', name: 'CFO AI', title: 'Chief Financial Officer', desc: 'The Capital Allocator — financial strategy', defaultVoice: 'ErXwobaYiN019PkySvjV' },
+  { id: 'COO', name: 'COO AI', title: 'Chief Operating Officer', desc: 'The Executor — operations & delivery', defaultVoice: 'VR6AewLTigWG4xSOukaG' },
+  { id: 'CTO', name: 'CTO AI', title: 'Chief Technology Officer', desc: 'The Architect — systems & technical execution', defaultVoice: 'TxGEqnHWrfWFTfGW9XjX' },
+  { id: 'CSO', name: 'CSO AI', title: 'Chief Strategy Officer', desc: 'The Strategist — long-term positioning', defaultVoice: 'yoZ06aMxZJJ28mfd3POQ' },
+  { id: 'CRO', name: 'CRO AI', title: 'Chief Risk Officer', desc: 'The Protector — risk & downside', defaultVoice: 'AZnzlk1XvdvUeBnXmlld' },
+  { id: 'CIO', name: 'CIO AI', title: 'Chief Information Officer', desc: 'The Intelligence Layer — data & analytics', defaultVoice: '21m00Tcm4TlvDq8ikWAM' },
+  { id: 'CPO', name: 'CPO AI', title: 'Chief Product Officer', desc: 'The Builder — product & UX', defaultVoice: 'jBpfuIE2acCO8z3wKNLl' },
+  { id: 'CHRO', name: 'CHRO AI', title: 'Chief HR Officer', desc: 'The Culture Builder — talent & org', defaultVoice: 'EXAVITQu4vr4xnSDxMaL' },
+  { id: 'CLO', name: 'CLO AI', title: 'Chief Legal Officer', desc: 'The Guardian — legal & compliance', defaultVoice: 'MF3mGyEYCl7XYWbV9V9L' },
 ];
 
 let currentStep = 0;
-const totalSteps = 6;
+const totalSteps = 7;
 const selectedAgents = new Set(['CEO', 'CFO', 'COO', 'CTO', 'CSO', 'CRO', 'CIO', 'CPO', 'CHRO', 'CLO']);
 
 function initAgentGrid() {
@@ -720,10 +803,17 @@ function initAgentGrid() {
       if (selectedAgents.has(a.id)) { selectedAgents.delete(a.id); card.classList.remove('selected'); card.querySelector('input').checked = false; }
       else { selectedAgents.add(a.id); card.classList.add('selected'); card.querySelector('input').checked = true; }
     };
+    const voiceOptions = VOICES.map(v =>
+      `<option value="${v.id}" ${v.id === a.defaultVoice ? 'selected' : ''}>${v.name}</option>`
+    ).join('');
     card.innerHTML = `
       <div class="role">${a.id}</div>
       <div class="name">${a.name}</div>
       <div class="desc">${a.desc}</div>
+      <select id="voice-${a.id}" onclick="event.stopPropagation()" style="margin-top:8px;width:100%;font-size:0.72rem;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:3px 6px">
+        <option value="">🔇 No voice</option>
+        ${voiceOptions}
+      </select>
       <input type="checkbox" ${selectedAgents.has(a.id) ? 'checked' : ''} ${a.always ? 'disabled' : ''}>
     `;
     grid.appendChild(card);
@@ -743,7 +833,7 @@ function goToStep(n) {
   document.getElementById('stepInfo').textContent = `Step ${currentStep + 1} of ${totalSteps}`;
   document.getElementById('btnBack').style.display = currentStep > 0 ? '' : 'none';
   document.getElementById('btnNext').textContent = currentStep === totalSteps - 1 ? 'Generate' : 'Continue';
-  if (currentStep === 5) buildSummary();
+  if (currentStep === 6) buildSummary();
 }
 
 function nextStep() {
@@ -891,9 +981,23 @@ async function generatePackage() {
     repoVisibility: radioVal('repoVis') || 'private',
     deployMethod: val('deployMethod') || 'script',
     agents: [...selectedAgents],
+    agentVoices: Object.fromEntries(AGENTS.map(a => [a.id, (document.getElementById('voice-' + a.id) || {}).value || a.defaultVoice || ''])),
     decisionMode: val('decisionMode') || 'full',
     escalationThreshold: val('escalationThreshold') || '$10,000',
     autoOpen: radioVal('autoOpen') || 'true',
+    // Owner profile
+    ownerBio: val('ownerBio'),
+    ownerLinkedIn: val('ownerLinkedIn'),
+    ownerTwitter: val('ownerTwitter'),
+    ownerWebsite: val('ownerWebsite'),
+    ownerIndustry: val('ownerIndustry'),
+    ownerCompetitors: val('ownerCompetitors'),
+    ownerGoals: val('ownerGoals'),
+    ownerChallenge: val('ownerChallenge'),
+    ownerCommStyle: val('ownerCommStyle') || 'direct',
+    ownerAvailability: val('ownerAvailability'),
+    // Voice
+    elevenlabsKey: val('elevenlabsKey'),
   };
 
   const btn = document.querySelector('.generate-btn-wrap .btn');
@@ -921,6 +1025,7 @@ async function generatePackage() {
 
     // Memory
     zip.file('memory/SOUL.md', soulMd(cfg));
+    zip.file('memory/OWNER.md', ownerMd(cfg));
     zip.file('memory/HEARTBEATS.md', '# HEARTBEATS.md — Agent Wake Log\n# Appended automatically each heartbeat cycle\n');
     zip.file('memory/decisions.json', '[]');
 
@@ -1391,13 +1496,16 @@ MISTRAL_API_KEY="${c.mistralKey}"
 # Intelligence & Skills
 FIRECRAWL_API_KEY="${c.firecrawlKey}"
 SKILLSMP_API_KEY="${c.skillsmpKey}"
+ELEVENLABS_API_KEY="${c.elevenlabsKey}"
+
+# Agent Voices (ElevenLabs voice IDs)
+${Object.entries(c.agentVoices || {}).map(([id,v]) => `VOICE_${id}="${v}"`).join('\n')}
 
 # Communications
 TG_TOKEN="${c.tgToken}"
 TG_CHAT_ID="${c.tgChatId}"
 DISCORD_TOKEN="${c.discordToken}"
 DISCORD_CHANNEL_ID="${c.discordChannelId}"
-
 
 # Data
 SUPABASE_URL="${c.supabaseUrl}"
@@ -1407,6 +1515,14 @@ GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
 # GitHub
 GITHUB_USER="${c.githubUser}"
 GITHUB_REPO="${c.githubRepo}"
+
+# Owner Profile (used to build agent memory)
+OWNER_WEBSITE="${c.ownerWebsite}"
+OWNER_LINKEDIN="${c.ownerLinkedIn}"
+OWNER_TWITTER="${c.ownerTwitter}"
+OWNER_INDUSTRY="${c.ownerIndustry}"
+OWNER_COMPETITORS="${c.ownerCompetitors}"
+OWNER_COMM_STYLE="${c.ownerCommStyle}"
 `;
 }
 
@@ -1606,6 +1722,42 @@ ${p.tone}
 ## System Prompt
 ${p.prompt}
 `;
+}
+
+function ownerMd(c) {
+  const lines = [
+    `# OWNER.md — ${c.ownerName} Profile`,
+    `# Built during setup — update this file directly as your situation evolves.`,
+    `# Last updated: ${new Date().toISOString()}`,
+    ``,
+    `## Who I Am`,
+    c.ownerBio ? c.ownerBio : '_Not provided_',
+    ``,
+    `## Contact & Profiles`,
+    c.ownerWebsite    ? `- **Website:** ${c.ownerWebsite}` : '',
+    c.ownerLinkedIn   ? `- **LinkedIn:** ${c.ownerLinkedIn}` : '',
+    c.ownerTwitter    ? `- **Twitter/X:** ${c.ownerTwitter}` : '',
+    ``,
+    `## The Business`,
+    `- **Company:** ${c.companyName}`,
+    `- **Mission:** ${c.mission}`,
+    c.ownerIndustry   ? `- **Industry:** ${c.ownerIndustry}` : '',
+    c.ownerCompetitors ? `- **Key Competitors:** ${c.ownerCompetitors}` : '',
+    ``,
+    `## Current Goals (90 Days)`,
+    c.ownerGoals ? c.ownerGoals : '_Not provided_',
+    ``,
+    `## Biggest Challenge Right Now`,
+    c.ownerChallenge ? c.ownerChallenge : '_Not provided_',
+    ``,
+    `## How I Like to Communicate`,
+    `- **Style:** ${c.ownerCommStyle || 'direct'}`,
+    c.ownerAvailability ? `- **Availability:** ${c.ownerAvailability}` : '',
+    ``,
+    `## Notes`,
+    `_Agents should read this file before making recommendations. Update it freely._`,
+  ];
+  return lines.filter(l => l !== '').join('\n');
 }
 
 function soulMd(c) {

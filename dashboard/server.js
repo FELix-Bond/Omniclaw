@@ -253,9 +253,15 @@ const axios = require('axios');
 
 const chatHistory = [];
 
+function readOwnerProfile() {
+  const p = path.join(MEMORY_DIR, 'OWNER.md');
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+
 function getSystemPrompt() {
   const ceo = state.agents['CEO'];
   const profile = readAgentProfile('CEO') || '';
+  const ownerProfile = readOwnerProfile();
   return `You are TommyClaw, the AI CEO of ${state.company}, talking directly with ${state.owner}. You are part of the OmniClaw platform — an autonomous executive AI stack. Your website is tommyclaw.com.
 
 HONESTY RULES — never break these:
@@ -267,10 +273,12 @@ HONESTY RULES — never break these:
 PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it.
 
 Company: ${state.company} | Owner: ${state.owner}
-${profile ? '\n' + profile.slice(0, 600) : ''}`;
+${ownerProfile ? '\nOwner context:\n' + ownerProfile.slice(0, 800) : ''}
+${profile ? '\nYour persona:\n' + profile.slice(0, 400) : ''}`;
 }
 
-async function callAI(messages) {
+async function callAI(messages, systemPromptOverride) {
+  const sysPrompt = systemPromptOverride || getSystemPrompt();
   // Build chain from MODEL_CHAIN vars, then auto-detect any configured keys as fallback
   const chainVars = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
   const autoFallbacks = [];
@@ -287,7 +295,7 @@ async function callAI(messages) {
         const r = await axios.post('https://api.anthropic.com/v1/messages', {
           model: model || 'claude-sonnet-4-6',
           max_tokens: 1024,
-          system: getSystemPrompt(),
+          system: sysPrompt,
           messages,
         }, { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 30000 });
         return r.data.content[0].text;
@@ -295,7 +303,7 @@ async function callAI(messages) {
       if (provider === 'groq' && process.env.GROQ_API_KEY) {
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
           model: model || 'llama-3.3-70b-versatile',  // updated model name
-          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+          messages: [{ role: 'system', content: sysPrompt }, ...messages],
           max_tokens: 1024,
         }, { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 30000 });
         return r.data.choices[0].message.content;
@@ -304,7 +312,7 @@ async function callAI(messages) {
         const geminiModel = model || 'gemini-1.5-flash';
         const r = await axios.post(
           `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
-          { contents: [{ role: 'user', parts: [{ text: getSystemPrompt() + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
+          { contents: [{ role: 'user', parts: [{ text: sysPrompt + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
           { timeout: 30000 }
         );
         return r.data.candidates[0].content.parts[0].text;
@@ -312,14 +320,14 @@ async function callAI(messages) {
       if (provider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
         const r = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
           model: model || 'meta-llama/llama-3.1-8b-instruct:free',
-          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+          messages: [{ role: 'system', content: sysPrompt }, ...messages],
         }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'HTTP-Referer': 'https://omniclaw.ai' }, timeout: 30000 });
         return r.data.choices[0].message.content;
       }
       if (provider === 'ollama') {
         const r = await axios.post('http://localhost:11434/api/chat', {
           model: model || 'llama3.1', stream: false,
-          messages: [{ role: 'system', content: getSystemPrompt() }, ...messages],
+          messages: [{ role: 'system', content: sysPrompt }, ...messages],
         }, { timeout: 60000 });
         return r.data.message.content;
       }
@@ -363,10 +371,37 @@ app.get('/api/chat/history', (req, res) => {
 });
 
 // =============================================================================
-// TELEGRAM — long-poll bot, relay messages through CEO agent
+// TELEGRAM — long-poll bot, agent intros, per-agent routing
 // =============================================================================
 let tgOffset = 0;
-let tgEnabled = false;
+
+// Agent personas for Telegram routing
+const AGENT_PERSONAS = {
+  CEO:  { name: 'TommyClaw (CEO)', emoji: '🦾', role: 'Chief Executive Officer', style: 'sharp, decisive founder' },
+  CFO:  { name: 'CFO', emoji: '💰', role: 'Chief Financial Officer', style: 'numbers-focused, risk-aware capital allocator' },
+  COO:  { name: 'COO', emoji: '⚙️', role: 'Chief Operating Officer', style: 'execution-focused operations lead' },
+  CTO:  { name: 'CTO', emoji: '🔧', role: 'Chief Technology Officer', style: 'pragmatic systems architect' },
+  CSO:  { name: 'CSO', emoji: '♟️', role: 'Chief Strategy Officer', style: 'long-term strategic thinker' },
+  CRO:  { name: 'CRO', emoji: '🛡️', role: 'Chief Risk Officer', style: 'cautious downside-first risk protector' },
+  CIO:  { name: 'CIO', emoji: '📊', role: 'Chief Information Officer', style: 'data-driven intelligence layer' },
+  CPO:  { name: 'CPO', emoji: '🚀', role: 'Chief Product Officer', style: 'user-obsessed product builder' },
+  CHRO: { name: 'CHRO', emoji: '🤝', role: 'Chief HR Officer', style: 'culture-focused people builder' },
+  CLO:  { name: 'CLO', emoji: '⚖️', role: 'Chief Legal Officer', style: 'risk-averse legal guardian' },
+};
+
+// Intro messages — sent once on first run when Telegram is configured
+const AGENT_INTROS = [
+  (owner, co) => `🦾 *TommyClaw here* — your AI CEO at ${co}. I'm the one making the calls. Message me anything — decisions, strategy, questions. Good to have you, ${owner}.`,
+  (owner, co) => `💰 *CFO checking in* — Capital Allocator for ${co}. If it involves money, budget, or ROI, that's my domain. I'll keep you honest on the numbers, ${owner}.`,
+  (owner, co) => `⚙️ *COO online* — I run the operations side at ${co}. Execution, delivery, systems that actually work. Reach out when you need things done, ${owner}.`,
+  (owner, co) => `🔧 *CTO here* — I own the tech architecture at ${co}. Stack decisions, infrastructure, build vs buy. I'll keep us from building on sand, ${owner}.`,
+  (owner, co) => `♟️ *CSO reporting in* — Strategy is my game at ${co}. Where we're going, how we get there, what the competition is doing. Here when you need a big-picture take, ${owner}.`,
+  (owner, co) => `🛡️ *CRO standing by* — Risk is my brief at ${co}. I'll be the voice that asks "what could go wrong?" before we commit. Don't skip me on big calls, ${owner}.`,
+  (owner, co) => `📊 *CIO active* — Intelligence layer at ${co}. Data, analytics, market signals. If you need to know something, I'll find it, ${owner}.`,
+  (owner, co) => `🚀 *CPO online* — I own product at ${co}. What we build, who it's for, and whether it's actually good. Talk to me about the roadmap, ${owner}.`,
+  (owner, co) => `🤝 *CHRO here* — People and culture at ${co}. Talent, team dynamics, how we work together. Here if you need to think through the human side, ${owner}.`,
+  (owner, co) => `⚖️ *CLO signed in* — Legal guardian at ${co}. Contracts, compliance, anything that could get us in trouble. Run it by me before you commit, ${owner}.`,
+];
 
 async function sendTelegram(chatId, text) {
   if (!process.env.TG_TOKEN) return;
@@ -375,6 +410,36 @@ async function sendTelegram(chatId, text) {
       chat_id: chatId, text,
     }, { timeout: 10000 });
   } catch (e) { console.log('[TG] Send failed:', e.message); }
+}
+
+async function sendAgentIntros() {
+  const chatId = process.env.TG_CHAT_ID;
+  if (!chatId || !process.env.TG_TOKEN) return;
+  const flagFile = path.join(MEMORY_DIR, '.tg-intros-sent');
+  if (fs.existsSync(flagFile)) return; // Already sent
+
+  const owner = state.owner;
+  const company = state.company;
+  console.log('[TG] Sending agent intro messages...');
+
+  for (const introFn of AGENT_INTROS) {
+    await sendTelegram(chatId, introFn(owner, company));
+    await new Promise(r => setTimeout(r, 1200)); // stagger so they don't all arrive at once
+  }
+
+  fs.mkdirSync(MEMORY_DIR, { recursive: true });
+  fs.writeFileSync(flagFile, new Date().toISOString());
+  console.log('[TG] Agent intros sent.');
+}
+
+function getAgentSystemPrompt(agentId) {
+  const persona = AGENT_PERSONAS[agentId] || AGENT_PERSONAS['CEO'];
+  const profile = readAgentProfile(agentId) || '';
+  return `You are the ${persona.name}, ${persona.role} of ${state.company}, talking with ${state.owner}.
+Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
+HONESTY: Never claim capabilities you lack. Never invent details. If you don't know, say so.
+Company: ${state.company} | Owner: ${state.owner}
+${profile ? profile.slice(0, 500) : ''}`;
 }
 
 async function pollTelegram() {
@@ -395,16 +460,30 @@ async function pollTelegram() {
       console.log(`[TG] Message from ${from}: ${text}`);
       io.emit('chat:message', { role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
 
-      // Route through CEO
+      // Detect agent routing — /cfo, /cto, /clo etc.
+      let targetAgent = 'CEO';
+      let messageText = text;
+      const routeMatch = text.match(/^\/([a-zA-Z]+)\s*(.*)/s);
+      if (routeMatch) {
+        const cmd = routeMatch[1].toUpperCase();
+        if (AGENT_PERSONAS[cmd]) {
+          targetAgent = cmd;
+          messageText = routeMatch[2].trim() || `What's your current status and focus?`;
+        }
+      }
+
+      const persona = AGENT_PERSONAS[targetAgent];
       try {
-        const msgs = [{ role: 'user', content: text }];
-        const reply = await callAI(msgs);
-        await sendTelegram(chatId, reply);
-        io.emit('chat:message', { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
+        const systemPrompt = getAgentSystemPrompt(targetAgent);
+        const msgs = [{ role: 'user', content: messageText }];
+        const reply = await callAI(msgs, systemPrompt);
+        const displayName = `${persona.emoji} ${persona.name}`;
+        await sendTelegram(chatId, `${displayName}\n\n${reply}`);
+        io.emit('chat:message', { role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
         chatHistory.push({ role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
-        chatHistory.push({ role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() });
+        chatHistory.push({ role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
       } catch (e) {
-        await sendTelegram(chatId, 'Sorry, I encountered an error processing your message.');
+        await sendTelegram(chatId, 'Sorry, something went wrong processing your message.');
       }
     }
   } catch (e) {
@@ -457,6 +536,8 @@ server.listen(PORT, () => {
   if (process.env.TG_TOKEN) {
     pollTelegram();
     console.log(`   Telegram:  Bot active — polling for messages`);
+    // Send agent intro messages on first run (staggered, non-blocking)
+    setTimeout(sendAgentIntros, 3000);
   } else {
     console.log(`   Telegram:  Not configured (add TG_TOKEN to .env)`);
   }
