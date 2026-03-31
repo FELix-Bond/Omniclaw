@@ -312,8 +312,14 @@
   <div class="card">
     <div class="card-title">Local Paths</div>
     <div class="field">
-      <label>Obsidian Vault Path <span>absolute path on target machine</span></label>
-      <input type="text" id="vaultPath" placeholder="/Users/yourname/Documents/Vault">
+      <label>Obsidian Vault Path <span>absolute path on your machine</span></label>
+      <input type="text" id="vaultPath" placeholder="/Users/yourname/Documents/MyVault" oninput="previewVaultPath(this)">
+      <div id="vaultPathPreview" style="font-size:0.78rem;color:var(--muted);margin-top:6px;line-height:1.6">
+        <strong style="color:var(--text)">How to find your vault path:</strong><br>
+        • <strong>Local vault:</strong> Obsidian → vault icon (bottom-left) → hover vault name → path shown<br>
+        • <strong>iCloud sync:</strong> <code style="font-size:0.75rem;background:var(--surface2);padding:2px 5px;border-radius:3px">~/Library/Mobile Documents/iCloud~md~obsidian/Documents/VaultName</code><br>
+        • <strong>Quick check:</strong> open Terminal and type <code style="font-size:0.75rem;background:var(--surface2);padding:2px 5px;border-radius:3px">ls ~/Documents</code> — look for a folder with your vault name
+      </div>
     </div>
     <div class="field">
       <label>Project Root Directory <span>where OmniClaw will be installed</span></label>
@@ -512,24 +518,38 @@
       <input type="password" id="tgToken" placeholder="1234567890:AAFxxxxxxx">
     </div>
     <div class="field">
+      <label>Telegram Chat ID <span>where agents send you messages — <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">Get your ID via @userinfobot →</a></span></label>
+      <input type="text" id="tgChatId" placeholder="123456789">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Message @userinfobot on Telegram — it replies with your chat ID instantly</div>
+    </div>
+    <div class="field">
       <label>Discord Bot Token <span>optional — <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal →</a></span></label>
       <input type="password" id="discordToken" placeholder="MTI...">
+    </div>
+    <div class="field">
+      <label>Discord Channel ID <span>optional — channel where agents post updates</span></label>
+      <input type="text" id="discordChannelId" placeholder="1234567890123456789">
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Discord → Settings → Advanced → Developer Mode ON → right-click channel → Copy Channel ID</div>
     </div>
   </div>
 
   <div class="card">
     <div class="card-title">Data & Storage</div>
     <div class="field">
-      <label>Supabase Project URL <span>optional, persistent memory — <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">Supabase Dashboard →</a></span></label>
-      <input type="text" id="supabaseUrl" placeholder="https://xxxxxxxxxxxx.supabase.co">
+      <label>Supabase Project Ref <span>optional — paste the short ref OR full URL — <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">Supabase Dashboard →</a></span></label>
+      <input type="text" id="supabaseUrl" placeholder="abcdefghijklmnop  (or full URL)" oninput="previewSupabase(this)">
+      <div id="supabasePreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Find in: Supabase Dashboard → Project Settings → API → Project URL</div>
     </div>
     <div class="field">
-      <label>Supabase Anon Key <span>found in Project Settings → API</span></label>
+      <label>Supabase Anon Key <span>Project Settings → API → anon public key</span></label>
       <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
     </div>
     <div class="field">
-      <label>Google Docs Folder ID <span>optional, report output — <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">Google Drive →</a></span></label>
-      <input type="text" id="googleDocsId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+      <label>Google Drive Folder <span>optional, report output — paste the share link or just the ID — <a href="https://drive.google.com" target="_blank" style="color:var(--accent)">Google Drive →</a></span></label>
+      <input type="text" id="googleDocsId" placeholder="https://drive.google.com/drive/folders/1Bxi... or just the ID" oninput="previewGoogleDocs(this)">
+      <div id="googleDocsPreview" style="font-size:0.78rem;color:var(--green);margin-top:4px;display:none"></div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">Right-click any folder in Drive → Share → Copy link → paste above</div>
     </div>
   </div>
 </div>
@@ -683,6 +703,66 @@ function prevStep() { if (currentStep > 0) goToStep(currentStep - 1); }
 function val(id) { return (document.getElementById(id)?.value || '').trim(); }
 function radioVal(name) { return document.querySelector(`input[name="${name}"]:checked`)?.value || ''; }
 
+// --- Smart field normalizers ---
+function normalizeSupabaseUrl(v) {
+  if (!v) return '';
+  v = v.trim();
+  if (v.startsWith('http')) return v; // already a full URL
+  // Strip anything after the ref (e.g. if user pasted a partial URL)
+  const refMatch = v.match(/([a-z0-9]{16,})/i);
+  const ref = refMatch ? refMatch[1] : v;
+  return `https://${ref}.supabase.co`;
+}
+
+function previewSupabase(el) {
+  const preview = document.getElementById('supabasePreview');
+  const v = el.value.trim();
+  if (!v) { preview.style.display = 'none'; return; }
+  const normalized = normalizeSupabaseUrl(v);
+  if (normalized !== v) {
+    preview.textContent = `→ Will be saved as: ${normalized}`;
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function extractGoogleDocsId(v) {
+  if (!v) return '';
+  v = v.trim();
+  // Extract from share URLs: /folders/ID or /d/ID
+  const m = v.match(/\/(?:folders|d)\/([a-zA-Z0-9_-]{25,})/);
+  if (m) return m[1];
+  // If it looks like a bare ID already (long alphanumeric string)
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(v)) return v;
+  return v;
+}
+
+function previewGoogleDocs(el) {
+  const preview = document.getElementById('googleDocsPreview');
+  const v = el.value.trim();
+  if (!v) { preview.style.display = 'none'; return; }
+  const extracted = extractGoogleDocsId(v);
+  if (extracted !== v) {
+    preview.textContent = `→ Extracted ID: ${extracted}`;
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function previewVaultPath(el) {
+  // Expand ~ to make it clearer this is a real path
+  const v = el.value.trim();
+  if (v.includes('iCloud~md~obsidian') || v.toLowerCase().includes('icloud')) {
+    el.style.borderColor = 'var(--green)';
+  } else if (v.length > 5) {
+    el.style.borderColor = 'var(--accent)';
+  } else {
+    el.style.borderColor = '';
+  }
+}
+
 function buildSummary() {
   const agents = [...selectedAgents].join(', ');
   document.getElementById('summaryContent').innerHTML = `
@@ -729,11 +809,13 @@ async function generatePackage() {
     firecrawlKey: val('firecrawlKey'),
     skillsmpKey: val('skillsmpKey'),
     tgToken: val('tgToken'),
+    tgChatId: val('tgChatId'),
     discordToken: val('discordToken'),
+    discordChannelId: val('discordChannelId'),
 
-    supabaseUrl: val('supabaseUrl'),
+    supabaseUrl: normalizeSupabaseUrl(val('supabaseUrl')),
     supabaseKey: val('supabaseKey'),
-    googleDocsId: val('googleDocsId'),
+    googleDocsId: extractGoogleDocsId(val('googleDocsId')),
     githubUser: val('githubUser'),
     githubRepo: val('githubRepo') || 'omniclaw-bootstrap',
     githubToken: val('githubToken'),
@@ -1009,7 +1091,9 @@ SKILLSMP_API_KEY="${c.skillsmpKey}"
 
 # Communications
 TG_TOKEN="${c.tgToken}"
+TG_CHAT_ID="${c.tgChatId}"
 DISCORD_TOKEN="${c.discordToken}"
+DISCORD_CHANNEL_ID="${c.discordChannelId}"
 
 
 # Data

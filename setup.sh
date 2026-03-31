@@ -116,7 +116,7 @@ DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
 # =============================================================================
 # KEYCHAIN — save keys from .env, fill gaps from Keychain
 # =============================================================================
-ALL_API_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
+ALL_API_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN TG_CHAT_ID DISCORD_TOKEN DISCORD_CHANNEL_ID SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
 
 kc_get() {
   local key="$1"
@@ -256,14 +256,22 @@ echo -e "  ${GREEN}✓ npm $(npm --version)${NC}"
 # Always ensure ~/.cargo/bin is on PATH (covers fresh installs and re-runs)
 export PATH="$HOME/.cargo/bin:$PATH"
 if ! command -v cargo >/dev/null 2>&1; then
-  echo -e "  ${YELLOW}⚠ Rust not found — installing (needed for OpenCLI-rs)...${NC}"
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --quiet
-  source "$HOME/.cargo/env" 2>/dev/null || true
-  export PATH="$HOME/.cargo/bin:$PATH"  # ensure PATH is updated in this shell
+  echo -e "  ${YELLOW}⚠ Rust not found — installing...${NC}"
+  # Try rustup (official cross-platform installer)
+  if curl --proto '=https' --tlsv1.2 -sSf --connect-timeout 20 https://sh.rustup.rs | sh -s -- -y --quiet 2>/dev/null; then
+    source "$HOME/.cargo/env" 2>/dev/null || true
+    export PATH="$HOME/.cargo/bin:$PATH"
+  fi
+  # If rustup failed or cargo still not found, try brew on macOS
+  if ! command -v cargo >/dev/null 2>&1 && [ "$OS" = "macos" ]; then
+    echo -e "  ${YELLOW}  rustup unavailable — trying brew install rust...${NC}"
+    brew install rust 2>/dev/null || true
+  fi
   if command -v cargo >/dev/null 2>&1; then
     echo -e "  ${GREEN}✓ Rust installed ($(rustc --version | awk '{print $2}'))${NC}"
   else
-    echo -e "  ${YELLOW}⚠ Rust install may need a terminal restart — OpenCLI-rs will be skipped this run${NC}"
+    echo -e "  ${YELLOW}⚠ Rust install failed — OpenCLI-rs will be skipped (non-fatal)${NC}"
+    echo -e "  ${YELLOW}  To install manually: brew install rust  or  https://rustup.rs${NC}"
   fi
 else
   echo -e "  ${GREEN}✓ Rust $(rustc --version | awk '{print $2}')${NC}"
