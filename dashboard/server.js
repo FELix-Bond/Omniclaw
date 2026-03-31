@@ -480,22 +480,138 @@ const SKILL_MANIFEST = {
     { id: 'supabase',        desc: 'Database read/write and auth' },
     { id: 'github',          desc: 'Repo management, issues, PRs' },
   ],
+  // 136+ specialised Codex subagents — github.com/VoltAgent/awesome-codex-subagents
+  // Install: git clone the repo, copy .toml files to ~/.codex/agents/
+  // Invoke: explicitly delegate in your prompt e.g. "Use the python-expert subagent to..."
+  codex_subagents: [
+    { id: 'codex:core-dev',          desc: '12 agents — API design, backend architecture, frontend, microservices, full-stack. Use for: "design this API", "scaffold a service", "review this component"' },
+    { id: 'codex:language-specialists', desc: '30 agents — Python, TypeScript, Rust, Go, Java, Ruby, PHP, Swift, Kotlin, C++, Elixir, Scala, Clojure, Haskell, Lua, R, MATLAB, Bash, SQL, Solidity and more. Use for: language-specific code review, idiomatic refactoring, performance optimisation' },
+    { id: 'codex:infrastructure',    desc: '16 agents — DevOps, AWS, GCP, Azure, Kubernetes, Terraform, Docker, CI/CD, networking, SRE. Use for: "write a Terraform module", "design our K8s setup", "build a CI pipeline"' },
+    { id: 'codex:quality-security',  desc: '16 agents — Unit testing, integration testing, code review, security audit, penetration testing, OWASP compliance, SAST. Use for: "security audit this endpoint", "write tests for this module", "find vulnerabilities"' },
+    { id: 'codex:data-ai',           desc: '12 agents — ML engineering, data pipelines, LLM integration, RAG, analytics, data modelling, vector DBs. Use for: "build a RAG pipeline", "design our ML training loop", "optimise this query"' },
+    { id: 'codex:devex',             desc: '13 agents — Build systems, documentation, refactoring, linting, code cleanup, SDK design, CLI tooling. Use for: "improve this README", "refactor this class", "design our CLI"' },
+    { id: 'codex:specialized',       desc: '12 agents — Blockchain/Web3, fintech, game development, embedded systems, scientific computing, AR/VR. Use for: "audit this smart contract", "build a fintech payment flow", "design game mechanics"' },
+    { id: 'codex:business-product',  desc: '11 agents — Product management, user research, UX analysis, legal/compliance, technical writing, go-to-market. Use for: "write a PRD", "analyse this UX flow", "draft terms of service"' },
+    { id: 'codex:meta-orchestration',desc: '12 agents — Multi-agent coordination, workflow automation, parallel task dispatching, agent planning, prompt engineering. Use for: "break this into parallel workstreams", "design the agent workflow", "orchestrate a multi-step build"' },
+    { id: 'codex:research-analysis', desc: '7 agents — Market research, competitive intelligence, technology scouting, trend analysis, literature review. Use for: "research competitors in this space", "find the state of the art for X", "analyse this market"' },
+  ],
 };
 
 // Per-agent primary skill focus (NOT restrictions — all agents access full pool)
 const AGENT_PRIMARY_SKILLS = {
-  CEO:  ['brainstorming', 'writing-plans', 'executing-plans', 'dispatching-parallel-agents', 'gmail', 'google-docs', 'slack'],
-  CFO:  ['yahoo-finance', 'bloomberg', 'stripe', 'google-sheets', 'hubspot', 'writing-plans', 'verification-before-completion'],
-  COO:  ['executing-plans', 'writing-plans', 'google-sheets', 'notion-api', 'slack', 'dispatching-parallel-agents'],
-  CTO:  ['github', 'stackoverflow', 'hackernews', 'arxiv', 'cursor', 'systematic-debugging', 'google-drive'],
-  CSO:  ['brainstorming', 'perplexity', 'firecrawl', 'bloomberg', 'bbc', 'arxiv', 'writing-plans'],
-  CMO:  ['twitter', 'instagram', 'tiktok', 'reddit', 'linkedin', 'youtube', 'medium', 'substack', 'firecrawl', 'perplexity', 'brainstorming', 'writing-plans'],
-  CRO:  ['systematic-debugging', 'verification-before-completion', 'bloomberg', 'hubspot', 'stripe', 'writing-plans'],
-  CIO:  ['google-sheets', 'supabase', 'perplexity', 'google', 'bbc', 'arxiv', 'dispatching-parallel-agents'],
-  CPO:  ['brainstorming', 'writing-plans', 'notion-api', 'github', 'google-docs', 'verification-before-completion'],
-  CHRO: ['linkedin', 'notion-api', 'google-docs', 'slack', 'gmail', 'writing-plans'],
-  CLO:  ['google', 'arxiv', 'notion-api', 'google-docs', 'gmail', 'verification-before-completion'],
+  CEO:  ['brainstorming', 'writing-plans', 'executing-plans', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'gmail', 'google-docs', 'slack'],
+  CFO:  ['yahoo-finance', 'bloomberg', 'stripe', 'google-sheets', 'hubspot', 'writing-plans', 'verification-before-completion', 'codex:data-ai', 'codex:specialized'],
+  COO:  ['executing-plans', 'writing-plans', 'google-sheets', 'notion-api', 'slack', 'dispatching-parallel-agents', 'codex:meta-orchestration', 'codex:devex'],
+  CTO:  [
+    // Core engineering
+    'github', 'stackoverflow', 'hackernews', 'arxiv', 'cursor', 'systematic-debugging', 'google-drive',
+    // Codex subagent categories — full access with deep briefing below
+    'codex:core-dev', 'codex:language-specialists', 'codex:infrastructure',
+    'codex:quality-security', 'codex:data-ai', 'codex:devex',
+    'codex:specialized', 'codex:meta-orchestration', 'codex:research-analysis',
+  ],
+  CSO:  ['brainstorming', 'perplexity', 'firecrawl', 'bloomberg', 'bbc', 'arxiv', 'writing-plans', 'codex:research-analysis', 'codex:business-product'],
+  CMO:  ['twitter', 'instagram', 'tiktok', 'reddit', 'linkedin', 'youtube', 'medium', 'substack', 'firecrawl', 'perplexity', 'brainstorming', 'writing-plans', 'codex:research-analysis', 'codex:business-product'],
+  CRO:  ['systematic-debugging', 'verification-before-completion', 'bloomberg', 'hubspot', 'stripe', 'writing-plans', 'codex:quality-security'],
+  CIO:  ['google-sheets', 'supabase', 'perplexity', 'google', 'bbc', 'arxiv', 'dispatching-parallel-agents', 'codex:data-ai', 'codex:research-analysis'],
+  CPO:  ['brainstorming', 'writing-plans', 'notion-api', 'github', 'google-docs', 'verification-before-completion', 'codex:business-product', 'codex:devex'],
+  CHRO: ['linkedin', 'notion-api', 'google-docs', 'slack', 'gmail', 'writing-plans', 'codex:business-product'],
+  CLO:  ['google', 'arxiv', 'notion-api', 'google-docs', 'gmail', 'verification-before-completion', 'codex:business-product', 'codex:quality-security'],
 };
+
+// Full briefing injected into CTO system prompt — how to use awesome-codex-subagents
+const CTO_CODEX_BRIEFING = `
+CODEX SUBAGENTS — FULL BRIEFING (github.com/VoltAgent/awesome-codex-subagents)
+================================================================================
+You have access to 136+ specialised Codex subagents across 10 categories.
+These are domain-expert AI agents you can delegate to for high-quality, focused output.
+
+INSTALLATION (one-time, done by setup.sh):
+  git clone https://github.com/VoltAgent/awesome-codex-subagents /tmp/codex-subagents
+  cp -r /tmp/codex-subagents/.codex/agents/* ~/.codex/agents/
+
+HOW TO INVOKE:
+  Subagents do NOT auto-spawn — you must explicitly delegate in your prompt.
+  Pattern: "Use the [subagent-name] subagent to [task]"
+  Examples:
+    "Use the python-expert subagent to review this function for performance issues"
+    "Dispatch the security-auditor and infrastructure-architect subagents in parallel to assess our stack"
+    "Use the market-researcher subagent to compile a competitive landscape for [space]"
+
+MODEL ROUTING (built into each subagent's .toml):
+  • GPT-5.4 (full model)  → deep reasoning tasks: architecture, security audits, complex refactors
+  • GPT-5.3 Codex Spark   → lighter tasks: documentation, formatting, simple queries
+  You don't need to specify — each subagent's .toml already sets the right model.
+
+SANDBOX MODES:
+  • read-only  → subagents that only analyse/review (safe, no changes)
+  • workspace-write → subagents that generate or modify code (review output before committing)
+
+THE 10 CATEGORIES — WHEN TO USE EACH:
+
+1. CORE DEVELOPMENT (12 agents)
+   When: Building new features, designing APIs, scaffolding services, full-stack work
+   Key agents: api-designer, backend-architect, frontend-specialist, microservices-expert
+   Example: "Use the api-designer subagent to design a REST API for our billing module"
+
+2. LANGUAGE SPECIALISTS (30 agents)
+   When: Language-specific review, idiomatic refactoring, performance tuning in a particular language
+   Key agents: python-expert, typescript-specialist, rust-engineer, go-developer, solidity-auditor
+   Example: "Use the typescript-specialist to refactor this to proper TypeScript with strict types"
+
+3. INFRASTRUCTURE (16 agents)
+   When: Cloud architecture, IaC, Kubernetes config, CI/CD pipelines, networking, SRE
+   Key agents: devops-engineer, terraform-specialist, kubernetes-architect, aws-solutions-architect
+   Example: "Use the terraform-specialist to write an AWS RDS module with proper security groups"
+
+4. QUALITY & SECURITY (16 agents)
+   When: Before shipping — security audit, penetration test, code review, writing tests
+   Key agents: security-auditor, penetration-tester, code-reviewer, test-engineer, owasp-checker
+   Example: "Use the security-auditor and test-engineer subagents in parallel on this PR"
+   IMPORTANT: Always run security-auditor before exposing any new API endpoint or auth flow
+
+5. DATA & AI (12 agents)
+   When: ML pipelines, RAG architecture, LLM integration, data modelling, analytics
+   Key agents: ml-engineer, data-pipeline-specialist, llm-integrator, rag-architect, analytics-engineer
+   Example: "Use the rag-architect subagent to design our document retrieval system"
+
+6. DEVELOPER EXPERIENCE (13 agents)
+   When: Improving docs, cleaning up code, refactoring legacy, designing CLIs, build systems
+   Key agents: documentation-writer, refactoring-specialist, build-system-expert, cli-designer
+   Example: "Use the documentation-writer to generate full API docs from these route handlers"
+
+7. SPECIALISED DOMAINS (12 agents)
+   When: Blockchain/Web3, fintech compliance, game mechanics, embedded systems
+   Key agents: blockchain-developer, fintech-architect, game-developer, embedded-systems-engineer
+   Example: "Use the fintech-architect to review our payment flow for PCI-DSS compliance"
+
+8. BUSINESS & PRODUCT (11 agents) — share with CPO, CLO, CMO
+   When: PRDs, UX analysis, legal/compliance writing, go-to-market technical specs
+   Key agents: product-manager, ux-researcher, legal-tech-specialist, technical-writer
+   Example: "Use the product-manager subagent to write a PRD for this feature"
+
+9. META & ORCHESTRATION (12 agents)
+   When: Breaking large tasks into parallel workstreams, designing agent workflows, prompt engineering
+   Key agents: workflow-orchestrator, parallel-agent-dispatcher, prompt-engineer, task-planner
+   Example: "Use the workflow-orchestrator to break this project into parallel agent workstreams"
+   TIP: Combine with your Superpowers dispatching-parallel-agents technique for maximum throughput
+
+10. RESEARCH & ANALYSIS (7 agents) — share with CSO, CIO, CMO
+    When: Technology scouting, competitive intelligence, market analysis, academic literature review
+    Key agents: market-researcher, competitive-analyst, tech-scout, literature-reviewer
+    Example: "Use the tech-scout subagent to find the state-of-the-art approach for vector search"
+
+POWER PATTERNS:
+  Parallel code review:  "Use the code-reviewer, security-auditor, and test-engineer subagents in parallel on [file]"
+  Full stack feature:    "Use api-designer → backend-architect → frontend-specialist in sequence to build [feature]"
+  Tech evaluation:       "Use the tech-scout and competitive-analyst subagents to compare [option A] vs [option B]"
+  Ship readiness:        "Use security-auditor, test-engineer, and documentation-writer before we ship [module]"
+
+WHEN NOT TO USE SUBAGENTS:
+  • Simple one-liners or trivial edits — just do it directly
+  • When you need context from this conversation — subagents have independent context windows
+  • Real-time decisions — subagents are best for discrete, delegatable tasks
+`;
 
 function getSkillContextForAgent(agentId) {
   const primary = AGENT_PRIMARY_SKILLS[agentId] || AGENT_PRIMARY_SKILLS['CEO'];
@@ -505,6 +621,7 @@ function getSkillContextForAgent(agentId) {
     ...SKILL_MANIFEST.opencli_browser,
     ...SKILL_MANIFEST.opencli_desktop,
     ...SKILL_MANIFEST.apis,
+    ...SKILL_MANIFEST.codex_subagents,
   ];
 
   const primaryList = primary.map(id => {
@@ -512,12 +629,18 @@ function getSkillContextForAgent(agentId) {
     return skill ? `  • ${id} — ${skill.desc}` : `  • ${id}`;
   }).join('\n');
 
+  const codexNote = agentId === 'CTO'
+    ? CTO_CODEX_BRIEFING
+    : primary.some(id => id.startsWith('codex:'))
+      ? `\nCODEX SUBAGENTS available for your role — install from github.com/VoltAgent/awesome-codex-subagents. Invoke by explicitly delegating: "Use the [subagent-name] subagent to [task]". Ask the CTO for a full briefing on available agents and patterns.`
+      : '';
+
   return `
 AVAILABLE TOOLS & SKILLS (shared pool — use any that help):
 Primary skills for your role:
 ${primaryList}
 
-When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.`;
+When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.${codexNote}`;
 }
 
 async function sendTelegram(chatId, text) {

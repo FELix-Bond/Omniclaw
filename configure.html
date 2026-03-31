@@ -2013,21 +2013,22 @@ function orgChartJson(c) {
     { name: 'perplexity-search',desc: 'Live AI-powered web research and real-time information retrieval' },
     { name: 'news-intel',       desc: 'Monitor industry news, keyword alerts, competitor coverage' },
     { name: 'github-ops',       desc: 'Create repos, push code, manage issues, trigger workflows' },
-    { name: 'superpowers-core', desc: '400+ agent capabilities via SkillsMP marketplace' },
+    { name: 'superpowers-core',    desc: '400+ agent capabilities via SkillsMP marketplace' },
+    { name: 'codex-subagents',     desc: '136+ specialised Codex subagents across 10 categories — Core Dev (12), Language Specialists (30), Infrastructure (16), Quality & Security (16), Data & AI (12), DevEx (13), Specialised Domains (12), Business & Product (11), Meta & Orchestration (12), Research & Analysis (7). Install: git clone github.com/VoltAgent/awesome-codex-subagents → copy .toml files to ~/.codex/agents/. Invoke by explicitly delegating in prompt. github.com/VoltAgent/awesome-codex-subagents' },
   ];
 
   const agentSkillFocus = {
     CEO:  ['gmail-send','telegram-notify','slack-post','google-docs','perplexity-search'],
     CFO:  ['stripe-read','google-sheets','supabase-query','gmail-send','notion-log'],
     COO:  ['google-calendar','slack-post','notion-log','supabase-query','github-ops'],
-    CTO:  ['github-ops','opencli-rs','superpowers-core','google-drive','supabase-query'],
-    CSO:  ['perplexity-search','firecrawl-intel','news-intel','hubspot-crm','google-docs'],
-    CRO:  ['firecrawl-intel','news-intel','supabase-query','slack-post','google-sheets'],
-    CIO:  ['perplexity-search','news-intel','firecrawl-intel','google-sheets','supabase-query'],
-    CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm'],
-    CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs'],
-    CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log'],
-    CMO:  ['opencli-rs','twitter','instagram','tiktok','linkedin','perplexity-search','firecrawl-intel','google-docs','notion-log','hubspot-crm'],
+    CTO:  ['github-ops','opencli-rs','superpowers-core','codex-subagents','google-drive','supabase-query'],
+    CSO:  ['perplexity-search','firecrawl-intel','news-intel','hubspot-crm','google-docs','codex-subagents'],
+    CRO:  ['firecrawl-intel','news-intel','supabase-query','slack-post','google-sheets','codex-subagents'],
+    CIO:  ['perplexity-search','news-intel','firecrawl-intel','google-sheets','supabase-query','codex-subagents'],
+    CPO:  ['notion-log','google-docs','github-ops','slack-post','hubspot-crm','codex-subagents'],
+    CHRO: ['google-calendar','gmail-send','slack-post','notion-log','google-docs','codex-subagents'],
+    CLO:  ['google-docs','gmail-send','firecrawl-intel','supabase-query','notion-log','codex-subagents'],
+    CMO:  ['opencli-rs','twitter','instagram','tiktok','linkedin','perplexity-search','firecrawl-intel','google-docs','notion-log','hubspot-crm','codex-subagents'],
   };
 
   return JSON.stringify({
@@ -2108,6 +2109,31 @@ perplexity-search       | Live AI-powered web research | HIGH | skillsmp install
 news-monitor            | Industry news monitoring and keyword alerts | MEDIUM | skillsmp install news-monitor
 superpowers-core        | 400+ agent capabilities via SkillsMP marketplace | HIGH | skillsmp install superpowers-core
 diegosouzapw/ai-engineer | RAG pipelines and agent architecture | HIGH | skillsmp install diegosouzapw/ai-engineer
+
+# =============================================================================
+# AWESOME CODEX SUBAGENTS (136+ agents — github.com/VoltAgent/awesome-codex-subagents)
+# Primary owner: CTO. Also used by: CPO, CLO, CMO, CSO, CIO, CRO, CFO
+# =============================================================================
+# --- INSTALLATION ---
+# git clone https://github.com/VoltAgent/awesome-codex-subagents /tmp/codex-subagents
+# cp -r /tmp/codex-subagents/.codex/agents/* ~/.codex/agents/
+# (setup.sh handles this automatically if CODEX_SUBAGENTS=true in .env)
+#
+# --- HOW TO INVOKE ---
+# Explicitly delegate in your prompt: "Use the [subagent-name] subagent to [task]"
+# Subagents do NOT auto-spawn — you must name them.
+#
+# --- CATEGORIES ---
+codex:core-dev           | 12 agents — API design, backend, frontend, microservices, full-stack | HIGH | CTO, CPO
+codex:language-specialists | 30 agents — Python, TypeScript, Rust, Go, Java, Ruby, PHP, Swift, Kotlin, Solidity + more | HIGH | CTO
+codex:infrastructure     | 16 agents — DevOps, AWS/GCP/Azure, Kubernetes, Terraform, CI/CD, SRE | HIGH | CTO, COO
+codex:quality-security   | 16 agents — Unit/integration testing, code review, security audit, pen testing, OWASP | HIGH | CTO, CRO
+codex:data-ai            | 12 agents — ML engineering, data pipelines, LLM integration, RAG, vector DBs | HIGH | CTO, CIO, CFO
+codex:devex              | 13 agents — Build systems, documentation, refactoring, linting, CLI design | MEDIUM | CTO, COO, CPO
+codex:specialized        | 12 agents — Blockchain/Web3, fintech, game dev, embedded systems, scientific computing | MEDIUM | CTO, CFO
+codex:business-product   | 11 agents — Product management, UX research, legal/compliance, technical writing, GTM | HIGH | CPO, CLO, CMO, CHRO
+codex:meta-orchestration | 12 agents — Multi-agent coordination, workflow automation, parallel dispatching, prompt engineering | HIGH | CTO, CEO, COO
+codex:research-analysis  | 7 agents — Market research, competitive intelligence, tech scouting, trend analysis | HIGH | CSO, CIO, CMO
 `;
 }
 
