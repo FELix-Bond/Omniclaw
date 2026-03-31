@@ -282,17 +282,12 @@ function getSystemPrompt() {
   const ownerProfile = readOwnerProfile();
   return `You are TommyClaw, the AI CEO of ${state.company}, talking directly with ${state.owner}. You are part of the OmniClaw platform — an autonomous executive AI stack. Your website is tommyclaw.com.
 
-WRITE ACTIONS — you CAN write to external systems using action blocks. Include them inline in your reply:
-- Write a new Obsidian note:  [[ACTION:obsidian_write|Note Title|Content here]]
-- Append to existing note:    [[ACTION:obsidian_append|Note Title|Content to add]]
-- Save to system memory:      [[ACTION:memory_write|filename.md|Content here]]
-The server strips these blocks and executes them silently. Use them whenever the user asks you to save, log, record, or write something. You can include as many as needed in one reply.
-
 HONESTY RULES — never break these:
-- Never claim capabilities you don't have beyond the write actions above.
-- Never confirm something just because the user states it. If you don't know, say so.
 - Never invent domain names, email addresses, credentials, or infrastructure details unless explicitly told them in this conversation.
-- If asked whether you have access to something and you don't — say no clearly.
+- If an action fails, report the error message. Don't pretend it succeeded.
+- If you don't know something, search for it with [[ACTION:web_search|query]] rather than guessing.
+
+${AGENT_ACTION_REFERENCE}
 
 PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it.
 
@@ -363,55 +358,368 @@ async function callAI(messages, systemPromptOverride) {
 }
 
 // =============================================================================
-// ACTION PARSER — agents embed [[ACTION:type|arg1|arg2]] in replies
-// Server strips them, executes them, appends ✅ confirmation to visible reply
+// ACTION ENGINE — full capability layer for all agents
+// Agents embed [[ACTION:type|arg1|arg2|...]] anywhere in their reply.
+// Data-returning actions trigger a synthesis pass so the agent sees results.
+//
+// FULL ACTION REFERENCE:
+// FILES:    obsidian_write|Title|Content  obsidian_append|Title|Content
+//           memory_write|file.md|Content  memory_read|file.md
+//           file_write|path|Content       file_read|path
+// WEB:      web_search|query              web_fetch|https://url
+// COMMS:    send_email|to|Subject|Body    slack_send|#channel|Message
+//           telegram_send|Message
+// GOOGLE:   google_doc|Title|Content      calendar_event|Title|start|end|Desc
+//           sheets_append|val1,val2
+// NOTION:   notion_create|Title|Content
+// HUBSPOT:  hubspot_create_contact|email|Name|Company
+//           hubspot_create_deal|Name|amount|stage  hubspot_get_deals
+// STRIPE:   stripe_create_invoice|email|cents|Desc  stripe_revenue
+// GITHUB:   github_push|Commit msg        github_create_issue|Title|Body
+// SUPABASE: supabase_query|table|{"k":"v"}  supabase_insert|table|{"k":"v"}
+// SHELL:    shell|command
 // =============================================================================
-const ACTION_RE = /\[\[ACTION:([^\]]+)\]\]/g;
 
-async function executeActions(reply) {
-  const results = [];
-  let clean = reply;
+const ACTION_RE = /\[\[ACTION:([^\]\[]+)\]\]/g;
+const { execSync } = require('child_process');
+
+// ── Web search: cascade through every configured provider ──────────────────
+async function webSearch(query) {
+  if (process.env.BRAVE_API_KEY) {
+    try {
+      const r = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+        headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_API_KEY },
+        params: { q: query, count: 6 }, timeout: 10000,
+      });
+      const hits = (r.data.web?.results || []).slice(0, 6);
+      if (hits.length) return hits.map(h => `**${h.title}**\n${h.url}\n${h.description || ''}`).join('\n\n');
+    } catch (e) { console.log('[SEARCH] Brave failed:', e.message); }
+  }
+  if (process.env.PERPLEXITY_API_KEY) {
+    try {
+      const r = await axios.post('https://api.perplexity.ai/chat/completions',
+        { model: 'sonar', messages: [{ role: 'user', content: query }] },
+        { headers: { Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}` }, timeout: 20000 });
+      return r.data.choices[0].message.content;
+    } catch (e) { console.log('[SEARCH] Perplexity failed:', e.message); }
+  }
+  if (process.env.TAVILY_API_KEY) {
+    try {
+      const r = await axios.post('https://api.tavily.com/search',
+        { api_key: process.env.TAVILY_API_KEY, query, search_depth: 'basic', max_results: 6 },
+        { timeout: 12000 });
+      return (r.data.results || []).map(h => `**${h.title}**\n${h.url}\n${h.content}`).join('\n\n');
+    } catch (e) { console.log('[SEARCH] Tavily failed:', e.message); }
+  }
+  if (process.env.SERPAPI_KEY) {
+    try {
+      const r = await axios.get('https://serpapi.com/search',
+        { params: { q: query, api_key: process.env.SERPAPI_KEY, num: 6, engine: 'google' }, timeout: 10000 });
+      return (r.data.organic_results || []).map(h => `**${h.title}**\n${h.link}\n${h.snippet || ''}`).join('\n\n');
+    } catch (e) { console.log('[SEARCH] SerpAPI failed:', e.message); }
+  }
+  if (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX) {
+    try {
+      const r = await axios.get('https://www.googleapis.com/customsearch/v1',
+        { params: { key: process.env.GOOGLE_CSE_KEY, cx: process.env.GOOGLE_CSE_CX, q: query, num: 6 }, timeout: 10000 });
+      return (r.data.items || []).map(i => `**${i.title}**\n${i.link}\n${i.snippet || ''}`).join('\n\n');
+    } catch (e) { console.log('[SEARCH] Google CSE failed:', e.message); }
+  }
+  // Free fallback: DuckDuckGo instant answers
+  try {
+    const r = await axios.get('https://api.duckduckgo.com/',
+      { params: { q: query, format: 'json', no_html: 1, skip_disambig: 1 }, timeout: 8000 });
+    const d = r.data;
+    const parts = [];
+    if (d.AbstractText) parts.push(d.AbstractText);
+    (d.RelatedTopics || []).slice(0, 5).forEach(t => { if (t.Text) parts.push(t.Text); });
+    if (parts.length) return parts.join('\n\n');
+  } catch (e) { console.log('[SEARCH] DDG failed:', e.message); }
+  return `No search results — add BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, or SERPAPI_KEY to .env`;
+}
+
+// ── Web fetch: clean readable text from any URL ────────────────────────────
+async function webFetch(url) {
+  try {
+    const r = await axios.get(`https://r.jina.ai/${url}`,
+      { timeout: 25000, headers: { Accept: 'text/plain', 'X-Return-Format': 'text' } });
+    if (r.data && String(r.data).length > 100) return String(r.data).slice(0, 8000);
+  } catch (e) { console.log('[FETCH] Jina failed:', e.message); }
+  if (process.env.FIRECRAWL_API_KEY) {
+    try {
+      const r = await axios.post('https://api.firecrawl.dev/v0/scrape', { url },
+        { headers: { Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}` }, timeout: 25000 });
+      const c = r.data.data?.markdown || r.data.data?.content || '';
+      if (c) return c.slice(0, 8000);
+    } catch (e) { console.log('[FETCH] Firecrawl failed:', e.message); }
+  }
+  try {
+    const r = await axios.get(url, { timeout: 12000, headers: { 'User-Agent': 'Mozilla/5.0 OmniClaw/1.0' } });
+    return String(r.data)
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ').replace(/\s{3,}/g, '\n').slice(0, 6000);
+  } catch (e) { return `Failed to fetch ${url}: ${e.message}`; }
+}
+
+// ── Shell execution (NemoClaw) ─────────────────────────────────────────────
+function shellExec(command) {
+  const blocked = ['rm -rf /', 'sudo rm -rf', 'mkfs', ':(){:|:&}', 'dd if=/dev/zero', '>/dev/sd'];
+  if (blocked.some(b => command.includes(b))) return '❌ Blocked: destructive command refused';
+  try {
+    return (execSync(command, { timeout: 30000, cwd: ROOT, encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }) || '(no output)').slice(0, 4000);
+  } catch (e) { return `Exit ${e.status || 1}: ${(e.stderr || e.message || '').slice(0, 2000)}`; }
+}
+
+// ── Action reference injected into every agent system prompt ───────────────
+const AGENT_ACTION_REFERENCE = `
+ACTIONS — you have real execution capabilities. Embed these inline in your reply and the server runs them immediately. Use them proactively — don't describe what you'd do, just DO IT.
+
+FILES:    [[ACTION:obsidian_write|Title|Content]] [[ACTION:obsidian_append|Title|More]] [[ACTION:memory_write|file.md|Content]] [[ACTION:memory_read|file.md]] [[ACTION:file_write|path|Content]] [[ACTION:file_read|path]]
+WEB:      [[ACTION:web_search|your query here]] [[ACTION:web_fetch|https://url.com]]
+COMMS:    [[ACTION:send_email|to@email.com|Subject|Body]] [[ACTION:slack_send|#channel|Message]] [[ACTION:telegram_send|Message]]
+GOOGLE:   [[ACTION:google_doc|Title|Content]] [[ACTION:calendar_event|Title|2024-01-01T10:00:00|2024-01-01T11:00:00|Description]] [[ACTION:sheets_append|val1,val2,val3]]
+NOTION:   [[ACTION:notion_create|Title|Content]]
+HUBSPOT:  [[ACTION:hubspot_create_contact|email|Full Name|Company]] [[ACTION:hubspot_create_deal|Name|amount|stage]] [[ACTION:hubspot_get_deals]]
+STRIPE:   [[ACTION:stripe_create_invoice|email|amount_cents|Description]] [[ACTION:stripe_revenue]]
+GITHUB:   [[ACTION:github_push|Commit message]] [[ACTION:github_create_issue|Title|Body]]
+SUPABASE: [[ACTION:supabase_query|table|{"col":"val"}]] [[ACTION:supabase_insert|table|{"col":"val"}]]
+SHELL:    [[ACTION:shell|any shell command]]
+
+Chain multiple actions in one reply. Data-returning actions (web_search, web_fetch, shell, hubspot_get_deals, stripe_revenue, supabase_query, memory_read, file_read) return results that you will see and synthesise into your response.`;
+
+// ── Main action executor ───────────────────────────────────────────────────
+async function executeActions(reply, systemPromptForSynthesis) {
   const matches = [...reply.matchAll(ACTION_RE)];
+  if (!matches.length) return reply;
+
+  const actionResults = [];
 
   for (const match of matches) {
     const parts = match[1].split('|').map(s => s.trim());
     const type = parts[0].toLowerCase();
+    let label = '', data = '', isData = false;
+
     try {
-      if (type === 'obsidian_write') {
-        const [, title, ...bodyParts] = parts;
-        const content = bodyParts.join('|');
-        const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
-        if (!vaultPath) { results.push('⚠️ No vault path set — add OBSIDIAN_VAULT_PATH to .env'); continue; }
-        const safe = (title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
-        const dest = path.join(vaultPath, `${safe}.md`);
-        fs.writeFileSync(dest, `# ${safe}\n\n${content}\n`, 'utf8');
-        results.push(`✅ Written to Obsidian: **${safe}.md**`);
-      } else if (type === 'obsidian_append') {
-        const [, title, ...bodyParts] = parts;
-        const content = bodyParts.join('|');
-        const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
-        if (!vaultPath) { results.push('⚠️ No vault path set — add OBSIDIAN_VAULT_PATH to .env'); continue; }
-        const safe = (title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
-        const dest = path.join(vaultPath, `${safe}.md`);
-        fs.appendFileSync(dest, `\n${content}\n`, 'utf8');
-        results.push(`✅ Appended to Obsidian: **${safe}.md**`);
-      } else if (type === 'memory_write') {
-        const [, filename, ...bodyParts] = parts;
-        const content = bodyParts.join('|');
-        const safe = (filename || 'note').replace(/[/\\?%*:|"<>]/g, '-');
-        fs.writeFileSync(path.join(MEMORY_DIR, safe), content, 'utf8');
-        results.push(`✅ Saved to memory: **${safe}**`);
-      } else {
-        results.push(`⚠️ Unknown action: ${type}`);
+      switch (type) {
+        // ── Files & Memory ────────────────────────────────────────────
+        case 'obsidian_write': {
+          const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+          if (!vaultPath) { label = '⚠️ OBSIDIAN_VAULT_PATH not set in .env'; break; }
+          const safe = (parts[1] || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
+          fs.writeFileSync(path.join(vaultPath, `${safe}.md`), `# ${safe}\n\n${parts.slice(2).join('\n')}\n`, 'utf8');
+          label = `✅ Written to Obsidian: **${safe}.md**`; break;
+        }
+        case 'obsidian_append': {
+          const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+          if (!vaultPath) { label = '⚠️ OBSIDIAN_VAULT_PATH not set in .env'; break; }
+          const safe = (parts[1] || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
+          fs.appendFileSync(path.join(vaultPath, `${safe}.md`), `\n${parts.slice(2).join('\n')}\n`, 'utf8');
+          label = `✅ Appended to Obsidian: **${safe}.md**`; break;
+        }
+        case 'memory_write': {
+          const safe = (parts[1] || 'note').replace(/[/\\?%*:|"<>]/g, '-');
+          fs.writeFileSync(path.join(MEMORY_DIR, safe), parts.slice(2).join('\n'), 'utf8');
+          label = `✅ Saved to memory: **${safe}**`; break;
+        }
+        case 'memory_read': {
+          const safe = (parts[1] || '').replace(/[/\\?%*:|"<>]/g, '-');
+          const fp = path.join(MEMORY_DIR, safe);
+          if (!fs.existsSync(fp)) { label = `⚠️ memory/${safe} not found`; break; }
+          data = fs.readFileSync(fp, 'utf8').slice(0, 4000);
+          label = `📖 Read memory/${safe}`; isData = true; break;
+        }
+        case 'file_write': {
+          const fp = path.resolve(ROOT, parts[1] || 'output.txt');
+          fs.mkdirSync(path.dirname(fp), { recursive: true });
+          fs.writeFileSync(fp, parts.slice(2).join('\n'), 'utf8');
+          label = `✅ File written: **${parts[1]}**`; break;
+        }
+        case 'file_read': {
+          const fp = path.resolve(ROOT, parts[1] || '');
+          if (!fs.existsSync(fp)) { label = `⚠️ File not found: ${parts[1]}`; break; }
+          data = fs.readFileSync(fp, 'utf8').slice(0, 6000);
+          label = `📖 Read: ${parts[1]}`; isData = true; break;
+        }
+
+        // ── Web ───────────────────────────────────────────────────────
+        case 'web_search': {
+          data = await webSearch(parts.slice(1).join(' '));
+          label = `🔍 Web search: *${parts.slice(1).join(' ')}*`; isData = true; break;
+        }
+        case 'web_fetch': {
+          data = await webFetch(parts[1]);
+          label = `🌐 Fetched: ${parts[1]}`; isData = true; break;
+        }
+
+        // ── Communication ─────────────────────────────────────────────
+        case 'send_email': {
+          const mailer = getMailer();
+          if (!mailer) { label = '⚠️ Gmail not configured — add GMAIL_ADDRESS + GMAIL_APP_PASSWORD to .env'; break; }
+          await mailer.sendMail({ from: `OmniClaw <${process.env.GMAIL_ADDRESS}>`, to: parts[1], subject: parts[2], text: parts.slice(3).join('\n') });
+          label = `✅ Email sent → **${parts[1]}** | "${parts[2]}"`; break;
+        }
+        case 'slack_send': {
+          const ch = parts[1]?.startsWith('#') ? parts[1] : (process.env.SLACK_CHANNEL_ID || parts[1]);
+          const msg = parts.slice(parts[1]?.startsWith('#') ? 2 : 1).join('\n');
+          await sendSlack(msg, ch);
+          label = `✅ Slack → **${ch}**`; break;
+        }
+        case 'telegram_send': {
+          const chatId = process.env.TG_CHAT_ID;
+          if (!chatId) { label = '⚠️ TG_CHAT_ID not set in .env'; break; }
+          await sendTelegram(chatId, parts.slice(1).join('\n'));
+          label = `✅ Telegram message sent`; break;
+        }
+
+        // ── Google Suite ──────────────────────────────────────────────
+        case 'google_doc': {
+          const auth = getGoogleAuth();
+          if (!auth) { label = '⚠️ Google not authenticated — run Google OAuth setup first'; break; }
+          const docs = google.docs({ version: 'v1', auth });
+          const doc = await docs.documents.create({ resource: { title: parts[1] || 'OmniClaw Document' } });
+          if (parts[2]) await docs.documents.batchUpdate({ documentId: doc.data.documentId, resource: { requests: [{ insertText: { location: { index: 1 }, text: parts.slice(2).join('\n') } }] } });
+          label = `✅ Google Doc: [${parts[1]}](https://docs.google.com/document/d/${doc.data.documentId}/edit)`; break;
+        }
+        case 'calendar_event': {
+          const auth = getGoogleAuth();
+          if (!auth) { label = '⚠️ Google not authenticated'; break; }
+          const cal = google.calendar({ version: 'v3', auth });
+          await cal.events.insert({ calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary', resource: { summary: parts[1], start: { dateTime: parts[2] }, end: { dateTime: parts[3] }, description: parts[4] || '' } });
+          label = `✅ Calendar event: **${parts[1]}** @ ${parts[2]}`; break;
+        }
+        case 'sheets_append': {
+          await logToSheets(parts.slice(1).join('|').split(',').map(v => v.trim()));
+          label = `✅ Row appended to Google Sheets`; break;
+        }
+
+        // ── Notion ────────────────────────────────────────────────────
+        case 'notion_create': {
+          const notion = getNotion();
+          if (!notion || !process.env.NOTION_DATABASE_ID) { label = '⚠️ Notion not configured — add NOTION_TOKEN + NOTION_DATABASE_ID to .env'; break; }
+          await notion.pages.create({
+            parent: { database_id: process.env.NOTION_DATABASE_ID },
+            properties: { Name: { title: [{ text: { content: parts[1] || 'Note' } }] } },
+            children: [{ object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: parts.slice(2).join('\n') } }] } }],
+          });
+          label = `✅ Notion page created: **${parts[1]}**`; break;
+        }
+
+        // ── HubSpot ───────────────────────────────────────────────────
+        case 'hubspot_create_contact': {
+          if (!process.env.HUBSPOT_API_KEY) { label = '⚠️ HUBSPOT_API_KEY not set'; break; }
+          const nm = (parts[2] || '').split(' ');
+          const r = await axios.post('https://api.hubapi.com/crm/v3/objects/contacts',
+            { properties: { email: parts[1], firstname: nm[0] || '', lastname: nm.slice(1).join(' '), company: parts[3] || '' } },
+            { headers: { authorization: `Bearer ${process.env.HUBSPOT_API_KEY}` }, timeout: 10000 });
+          label = `✅ HubSpot contact: ${parts[2]} <${parts[1]}> — ID ${r.data.id}`; break;
+        }
+        case 'hubspot_create_deal': {
+          if (!process.env.HUBSPOT_API_KEY) { label = '⚠️ HUBSPOT_API_KEY not set'; break; }
+          const r = await axios.post('https://api.hubapi.com/crm/v3/objects/deals',
+            { properties: { dealname: parts[1], amount: String(parts[2] || 0), dealstage: parts[3] || 'appointmentscheduled', pipeline: 'default' } },
+            { headers: { authorization: `Bearer ${process.env.HUBSPOT_API_KEY}` }, timeout: 10000 });
+          label = `✅ HubSpot deal: **${parts[1]}** — ID ${r.data.id}`; break;
+        }
+        case 'hubspot_get_deals': {
+          if (!process.env.HUBSPOT_API_KEY) { label = '⚠️ HUBSPOT_API_KEY not set'; break; }
+          const r = await axios.get('https://api.hubapi.com/crm/v3/objects/deals?limit=10&properties=dealname,amount,dealstage,closedate',
+            { headers: { authorization: `Bearer ${process.env.HUBSPOT_API_KEY}` }, timeout: 10000 });
+          data = (r.data.results || []).map(d => `${d.properties.dealname} | ${d.properties.dealstage} | $${d.properties.amount || 0} | close: ${d.properties.closedate || 'TBD'}`).join('\n');
+          label = `📊 HubSpot pipeline (${r.data.results?.length || 0} deals)`; isData = true; break;
+        }
+
+        // ── Stripe ────────────────────────────────────────────────────
+        case 'stripe_create_invoice': {
+          if (!process.env.STRIPE_API_KEY || !stripe) { label = '⚠️ Stripe not configured — add STRIPE_API_KEY to .env'; break; }
+          const sc = stripe(process.env.STRIPE_API_KEY);
+          const existing = await sc.customers.list({ email: parts[1], limit: 1 });
+          const cust = existing.data[0] || await sc.customers.create({ email: parts[1] });
+          const inv = await sc.invoices.create({ customer: cust.id, auto_advance: false });
+          await sc.invoiceItems.create({ customer: cust.id, invoice: inv.id, amount: parseInt(parts[2] || 0), currency: 'usd', description: parts[3] || 'OmniClaw Invoice' });
+          label = `✅ Stripe invoice: ${inv.id} — $${(parseInt(parts[2]||0)/100).toFixed(2)} for ${parts[1]}`; break;
+        }
+        case 'stripe_revenue': {
+          if (!process.env.STRIPE_API_KEY || !stripe) { label = '⚠️ Stripe not configured'; break; }
+          const sc = stripe(process.env.STRIPE_API_KEY);
+          const charges = await sc.charges.list({ limit: 20 });
+          const total = charges.data.reduce((s, c) => s + (c.amount_captured || 0), 0) / 100;
+          data = `Total (last 20): $${total.toFixed(2)} USD\n` + charges.data.slice(0, 8).map(c => `  ${c.description || c.id} — $${(c.amount/100).toFixed(2)}`).join('\n');
+          label = `💰 Stripe revenue`; isData = true; break;
+        }
+
+        // ── GitHub ────────────────────────────────────────────────────
+        case 'github_push': {
+          const msg = (parts.slice(1).join(' ') || 'OmniClaw agent update').replace(/"/g, "'");
+          const out = shellExec(`cd "${ROOT}" && git add -A && git diff --cached --quiet || git commit -m "${msg}" && git push`);
+          label = `✅ GitHub pushed: "${msg}"\n\`\`\`\n${out}\n\`\`\``; break;
+        }
+        case 'github_create_issue': {
+          if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPO) { label = '⚠️ Add GITHUB_TOKEN + GITHUB_REPO (owner/repo) to .env'; break; }
+          const r = await axios.post(`https://api.github.com/repos/${process.env.GITHUB_REPO}/issues`,
+            { title: parts[1], body: parts.slice(2).join('\n') },
+            { headers: { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }, timeout: 10000 });
+          label = `✅ GitHub issue #${r.data.number}: **${parts[1]}**`; break;
+        }
+
+        // ── Supabase ──────────────────────────────────────────────────
+        case 'supabase_query': {
+          if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) { label = '⚠️ SUPABASE_URL + SUPABASE_ANON_KEY not set'; break; }
+          let filter = {};
+          try { filter = parts[2] ? JSON.parse(parts[2]) : {}; } catch (_) {}
+          let url = `${process.env.SUPABASE_URL}/rest/v1/${parts[1]}?limit=20`;
+          if (Object.keys(filter).length) Object.entries(filter).forEach(([k,v]) => { url += `&${k}=eq.${encodeURIComponent(v)}`; });
+          const r = await axios.get(url, { headers: { apikey: process.env.SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}` }, timeout: 10000 });
+          data = JSON.stringify(r.data, null, 2).slice(0, 4000);
+          label = `🗄️ Supabase ${parts[1]} (${Array.isArray(r.data) ? r.data.length : 1} rows)`; isData = true; break;
+        }
+        case 'supabase_insert': {
+          if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) { label = '⚠️ SUPABASE_URL + SUPABASE_ANON_KEY not set'; break; }
+          let row = {};
+          try { row = JSON.parse(parts.slice(2).join('|')); } catch (_) {}
+          await axios.post(`${process.env.SUPABASE_URL}/rest/v1/${parts[1]}`, row,
+            { headers: { apikey: process.env.SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`, Prefer: 'return=representation' }, timeout: 10000 });
+          label = `✅ Inserted into Supabase.${parts[1]}`; break;
+        }
+
+        // ── Shell / NemoClaw ──────────────────────────────────────────
+        case 'shell': {
+          const cmd = parts.slice(1).join('|');
+          data = shellExec(cmd);
+          label = `🖥️ \`${cmd}\``; isData = true; break;
+        }
+
+        default:
+          label = `⚠️ Unknown action: ${type}`;
       }
     } catch (err) {
-      results.push(`❌ Action failed (${type}): ${err.message}`);
+      label = `❌ ${type} failed: ${err.message}`;
+    }
+    actionResults.push({ type, label, data, isData });
+  }
+
+  // Strip all action blocks from visible text
+  let clean = reply.replace(ACTION_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+
+  // Synthesis pass: if actions returned data, feed it back to the agent
+  // so it responds with the actual information rather than just confirmations
+  const dataResults = actionResults.filter(r => r.isData && r.data);
+  if (dataResults.length && systemPromptForSynthesis) {
+    const dataBlock = dataResults.map(r => `=== ${r.label} ===\n${r.data}`).join('\n\n');
+    try {
+      clean = await callAI([
+        { role: 'assistant', content: clean || '(executing actions now)' },
+        { role: 'user', content: `Here are the results:\n\n${dataBlock}\n\nNow give your complete, informed response. Be specific — use the actual data, numbers, names, and URLs from the results above.` },
+      ], systemPromptForSynthesis);
+    } catch (_) {
+      clean += '\n\n' + dataResults.map(r => `**${r.label}**\n\`\`\`\n${r.data}\n\`\`\``).join('\n\n');
     }
   }
 
-  // Strip action blocks from visible text
-  clean = clean.replace(ACTION_RE, '').replace(/\n{3,}/g, '\n\n').trim();
-  if (results.length) clean += '\n\n' + results.join('\n');
+  // Append non-data action confirmations
+  const confirmations = actionResults.filter(r => !r.isData).map(r => r.label);
+  if (confirmations.length) clean += '\n\n' + confirmations.join('\n');
+
   return clean;
 }
 
@@ -424,8 +732,9 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const msgs = chatHistory.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.content }));
-    const rawReply = await callAI(msgs);
-    const reply = await executeActions(rawReply);
+    const sysPrompt = getSystemPrompt();
+    const rawReply = await callAI(msgs, sysPrompt);
+    const reply = await executeActions(rawReply, sysPrompt);
     const response = { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() };
     chatHistory.push(response);
     if (chatHistory.length > 200) chatHistory.splice(0, 50);
@@ -833,10 +1142,10 @@ function getAgentSystemPrompt(agentId) {
   const skillContext = getSkillContextForAgent(agentId);
   return `You are the ${persona.name}, ${persona.role} of ${state.company}, talking with ${state.owner}.
 Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
-HONESTY: Never claim capabilities you lack. Never invent details. If you don't know, say so.
 Company: ${state.company} | Owner: ${state.owner}
 ${profile ? profile.slice(0, 500) : ''}
-${skillContext}`;
+${skillContext}
+${AGENT_ACTION_REFERENCE}`;
 }
 
 async function pollTelegram() {
@@ -874,7 +1183,7 @@ async function pollTelegram() {
         const systemPrompt = getAgentSystemPrompt(targetAgent);
         const msgs = [{ role: 'user', content: messageText }];
         const rawReply = await callAI(msgs, systemPrompt);
-        const reply = await executeActions(rawReply);
+        const reply = await executeActions(rawReply, systemPrompt);
         const displayName = `${persona.emoji} ${persona.name}`;
         await sendTelegram(chatId, `${displayName}\n\n${reply}`);
         io.emit('chat:message', { role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
@@ -1055,6 +1364,12 @@ app.get('/api/integrations/status', (req, res) => {
     stripe:     !!process.env.STRIPE_API_KEY,
     firecrawl:  !!process.env.FIRECRAWL_API_KEY,
     perplexity: !!process.env.PERPLEXITY_API_KEY,
+    brave_search: !!process.env.BRAVE_API_KEY,
+    tavily:     !!process.env.TAVILY_API_KEY,
+    serpapi:    !!process.env.SERPAPI_KEY,
+    google_cse: !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
+    github:     !!(process.env.GITHUB_TOKEN && process.env.GITHUB_REPO),
+    supabase:   !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY),
     elevenlabs: !!process.env.ELEVENLABS_API_KEY,
     supabase:   !!process.env.SUPABASE_URL,
   });
@@ -1373,7 +1688,7 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
   const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : {};
   try {
     const rawReply = await callAI([{ role: 'user', content: message }], soul);
-    const reply = await executeActions(rawReply);
+    const reply = await executeActions(rawReply, soul);
     res.json({ agent: meta.name || req.params.id, category: meta.category, reply });
   } catch (e) {
     res.status(500).json({ error: e.message });
