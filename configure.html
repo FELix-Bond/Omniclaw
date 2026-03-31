@@ -1253,53 +1253,17 @@ async function generatePackage() {
 }
 
 function generateDeployScript(c) {
-  // This is a slim bootstrapper. Its only jobs are:
-  //   1. Write the .env with all user config
-  //   2. Handle GitHub auth via gh CLI (no hanging, no timeouts)
-  //   3. Clone the OmniClaw repo (which has the real, always-updated setup.sh)
-  //   4. Hand off to the repo's setup.sh
-  // This means any fix we push to the repo is picked up automatically on next run.
+  // Bootstrap launcher — runs from inside the extracted ZIP.
+  // Jobs:
+  //   1. Write .env with all user config (always, even on re-install)
+  //   2. Handle GitHub auth via gh CLI
+  //   3. Pull latest OmniClaw files from GitHub into a TEMP DIR then rsync
+  //      over the current folder — NEVER clones into '.' so never fails on
+  //      non-empty directories.
+  //   4. Restore .env (rsync excludes it, but write it again to be safe)
+  //   5. Hand off to the real setup.sh (now updated from the repo)
   const chain = (c.modelChain || []).map((m,i) => `MODEL_CHAIN_${i+1}="${m.provider}::${m.model}"`).join('\n');
-  return `#!/bin/bash
-# =============================================================================
-# OMNICLAW BOOTSTRAP LAUNCHER
-# Company: ${c.companyName} | Owner: ${c.ownerName}
-# Generated: ${new Date().toISOString()}
-#
-# This script writes your .env, handles GitHub auth, clones the OmniClaw
-# repo, then hands off to the real setup.sh (always the latest version).
-# =============================================================================
-
-set -e
-GREEN='\\033[0;32m'; BLUE='\\033[0;34m'; RED='\\033[0;31m'; YELLOW='\\033[1;33m'; BOLD='\\033[1m'; NC='\\033[0m'
-
-echo -e "\${BLUE}"
-echo "  ██████╗ ███╗   ███╗███╗   ██╗██╗ ██████╗██╗      █████╗ ██╗    ██╗"
-echo " ██╔═══██╗████╗ ████║████╗  ██║██║██╔════╝██║     ██╔══██╗██║    ██║"
-echo " ██║   ██║██╔████╔██║██╔██╗ ██║██║██║     ██║     ███████║██║ █╗ ██║"
-echo " ╚██████╔╝██║ ╚═╝ ██║██║ ╚████║██║╚██████╗███████╗██║  ██║╚███╔███╔╝"
-echo "  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝"
-echo -e "\${NC}"
-echo -e "\${BOLD}  Bootstrap Launcher — ${c.companyName}\${NC}\\n"
-
-# Ensure Homebrew is on PATH (Apple Silicon)
-[ -f /opt/homebrew/bin/brew ] && eval "\$(/opt/homebrew/bin/brew shellenv)"
-[ -f /usr/local/bin/brew ]    && eval "\$(/usr/local/bin/brew shellenv)"
-
-OMNICLAW_REPO="https://github.com/FELix-Bond/Omniclaw.git"
-PROJECT_ROOT="${c.projectRoot}"
-
-# =============================================================================
-# STEP 1 — Write .env
-# =============================================================================
-echo -e "\${BLUE}[1/3] Writing environment configuration...\${NC}"
-mkdir -p "\$PROJECT_ROOT"
-cd "\$PROJECT_ROOT"
-
-[ -f ".env" ] && cp .env .env.bak && echo -e "  \${YELLOW}⚠ Existing .env backed up to .env.bak\${NC}"
-
-cat > .env << 'ENVEOF'
-# OmniClaw Environment — ${c.companyName}
+  const envBlock = `# OmniClaw Environment — ${c.companyName}
 # Generated: ${new Date().toISOString()}
 COMPANY_NAME="${c.companyName}"
 OWNER_NAME="${c.ownerName}"
@@ -1332,147 +1296,206 @@ MINIMAX_API_KEY="${c.minimaxKey}"
 MISTRAL_API_KEY="${c.mistralKey}"
 FIRECRAWL_API_KEY="${c.firecrawlKey}"
 SKILLSMP_API_KEY="${c.skillsmpKey}"
+ELEVENLABS_API_KEY="${c.elevenlabsKey}"
 
 # Communications
 TG_TOKEN="${c.tgToken}"
 TG_CHAT_ID="${c.tgChatId}"
 DISCORD_TOKEN="${c.discordToken}"
 DISCORD_CHANNEL_ID="${c.discordChannelId}"
+SLACK_BOT_TOKEN="${c.slackBotToken}"
+SLACK_CHANNEL_ID="${c.slackChannelId}"
 
-# Data
+# Gmail / Google
+GMAIL_ADDRESS="${c.gmailAddress}"
+GMAIL_APP_PASSWORD="${c.gmailAppPassword}"
+GOOGLE_CLIENT_ID="${c.googleOAuthClientId}"
+GOOGLE_CLIENT_SECRET="${c.googleOAuthClientSecret}"
+GOOGLE_DRIVE_FOLDER_ID="${c.googleDriveFolderId}"
+GOOGLE_SHEETS_ID="${c.googleSheetsId}"
+GOOGLE_CALENDAR_ID="${c.googleCalendarId}"
+
+# CRM & Finance
+HUBSPOT_API_KEY="${c.hubspotApiKey}"
+STRIPE_API_KEY="${c.stripeApiKey}"
+
+# Research
+PERPLEXITY_API_KEY="${c.perplexityApiKey}"
+NEWSAPI_KEY="${c.newsApiKey}"
+
+# Data & Storage
 SUPABASE_URL="${c.supabaseUrl}"
 SUPABASE_KEY="${c.supabaseKey}"
-GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
-ENVEOF
-echo -e "  \${GREEN}✓ .env written\${NC}"
+
+# Notion
+NOTION_TOKEN="${c.notionToken}"
+NOTION_DATABASE_ID="${c.notionDatabaseId}"
+
+# Briefing
+BRIEFING_EMAIL="${c.briefingEmail}"
+BRIEFING_TIME="${c.briefingTime}"
+BRIEFING_SECTIONS="${c.briefingSections}"
+BRIEFING_CUSTOM="${c.briefingCustom}"
+
+# Owner Profile
+OWNER_WEBSITE="${c.ownerWebsite}"
+OWNER_LINKEDIN="${c.ownerLinkedIn}"
+OWNER_TWITTER="${c.ownerTwitter}"
+OWNER_INDUSTRY="${c.ownerIndustry}"
+OWNER_COMPETITORS="${c.ownerCompetitors}"
+OWNER_COMM_STYLE="${c.ownerCommStyle}"`;
+
+  return `#!/bin/bash
+# =============================================================================
+# OMNICLAW BOOTSTRAP LAUNCHER v2
+# Company: ${c.companyName} | Owner: ${c.ownerName}
+# Generated: ${new Date().toISOString()}
+#
+# Safe to run on fresh installs AND over existing installs.
+# Never clones into the current directory — uses a temp dir + rsync.
+# =============================================================================
+
+# No set -e — every step handles its own errors
+GREEN='\\033[0;32m'; BLUE='\\033[0;34m'; RED='\\033[0;31m'; YELLOW='\\033[1;33m'; BOLD='\\033[1m'; NC='\\033[0m'
+
+# Always work from the directory this script lives in
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+cd "\$SCRIPT_DIR"
+
+ok()   { echo -e "  \${GREEN}✓\${NC} \$*"; }
+warn() { echo -e "  \${YELLOW}⚠\${NC} \$*"; }
+fail() { echo -e "  \${RED}✗\${NC} \$*"; }
+
+echo -e "\${BLUE}"
+echo "  ██████╗ ███╗   ███╗███╗   ██╗██╗ ██████╗██╗      █████╗ ██╗    ██╗"
+echo " ██╔═══██╗████╗ ████║████╗  ██║██║██╔════╝██║     ██╔══██╗██║    ██║"
+echo " ██║   ██║██╔████╔██║██╔██╗ ██║██║██║     ██║     ███████║██║ █╗ ██║"
+echo " ╚██████╔╝██║ ╚═╝ ██║██║ ╚████║██║╚██████╗███████╗██║  ██║╚███╔███╔╝"
+echo "  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝"
+echo -e "\${NC}"
+echo -e "\${BOLD}  Bootstrap Launcher — ${c.companyName}\${NC}\\n"
+
+# Homebrew PATH (Apple Silicon + Intel)
+[ -f /opt/homebrew/bin/brew ] && eval "\$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
+[ -f /usr/local/bin/brew    ] && eval "\$(/usr/local/bin/brew shellenv)" 2>/dev/null || true
 
 # =============================================================================
-# STEP 2 — GitHub auth via gh CLI (no hanging, no password prompts)
+# STEP 1 — Write .env (always write — this is the source of truth from configure.html)
+# =============================================================================
+echo -e "\${BLUE}[1/3] Writing environment configuration...\${NC}"
+
+# Backup existing .env if present (just in case)
+[ -f ".env" ] && cp ".env" ".env.bak" 2>/dev/null && warn "Previous .env backed up to .env.bak"
+
+cat > ".env" << 'ENVEOF'
+${envBlock}
+ENVEOF
+ok ".env written (${Object.keys(c).length} values)"
+
+# =============================================================================
+# STEP 2 — GitHub auth (optional — skips cleanly if not needed)
 # =============================================================================
 echo -e "\\n\${BLUE}[2/3] GitHub authentication...\${NC}"
 
 # Install gh CLI if missing
 if ! command -v gh >/dev/null 2>&1; then
-  echo -e "  \${YELLOW}⚠ GitHub CLI not found — installing...\${NC}"
+  warn "GitHub CLI not found — installing..."
   if command -v brew >/dev/null 2>&1; then
-    brew install gh
+    brew install gh 2>/dev/null && ok "gh CLI installed" || warn "gh CLI install failed — skipping"
   elif command -v apt-get >/dev/null 2>&1; then
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-    echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt update -qq && sudo apt install gh -y -qq
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null 2>&1 || true
+    sudo apt update -qq && sudo apt install gh -y -qq 2>/dev/null && ok "gh CLI installed" || warn "gh CLI install failed — skipping"
   fi
 fi
 
 if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then
     GH_USER=\$(gh api user --jq .login 2>/dev/null || echo "authenticated")
-    echo -e "  \${GREEN}✓ Already logged in as: \${BOLD}\${GH_USER}\${NC}"
+    ok "Already logged in as: \${BOLD}\${GH_USER}\${NC}"
+    git config --global credential.helper "\$(which gh) auth git-credential" 2>/dev/null || true
+    export GITHUB_TOKEN=\$(gh auth token 2>/dev/null || true)
   else
-    echo -e "  \${YELLOW}Action required: log in to GitHub now.\${NC}"
-    echo -e "  This opens your browser for a one-click login.\\n"
-    gh auth login --web 2>/dev/null || gh auth login
+    warn "Not logged in to GitHub."
+    echo -e "  This will open your browser for a one-click GitHub login.\\n"
+    gh auth login --web 2>/dev/null || gh auth login 2>/dev/null || warn "GitHub login skipped"
     if gh auth status >/dev/null 2>&1; then
       GH_USER=\$(gh api user --jq .login 2>/dev/null || echo "authenticated")
-      echo -e "  \${GREEN}✓ Logged in as: \${BOLD}\${GH_USER}\${NC}"
+      ok "Logged in as: \${GH_USER}"
+      git config --global credential.helper "\$(which gh) auth git-credential" 2>/dev/null || true
+      export GITHUB_TOKEN=\$(gh auth token 2>/dev/null || true)
     fi
   fi
-  # Use gh as the git credential helper — no more auth popups or hangs
-  git config --global credential.helper "\$(which gh) auth git-credential" 2>/dev/null || true
-  export GITHUB_TOKEN=\$(gh auth token 2>/dev/null || true)
-fi
-
-# =============================================================================
-# STEP 3 — Clone OmniClaw repo and run the real setup.sh
-# =============================================================================
-echo -e "\\n\${BLUE}[3/3] Fetching latest OmniClaw and launching setup...\${NC}"
-
-clone_failed() {
-  echo -e "  \${RED}✗ Clone failed.\${NC}"
-  echo -e "  Error: \$1"
-  echo -e "  Check your internet connection and try again."
-  exit 1
-}
-
-if [ -d ".git" ]; then
-  echo -e "  Repo already present — pulling latest..."
-  git pull origin main --quiet 2>/dev/null || true
 else
-  echo -e "  Cloning OmniClaw bootstrap repo..."
+  warn "gh CLI unavailable — git will use HTTPS (may prompt for credentials)"
+fi
+export GIT_TERMINAL_PROMPT=0
 
-  # Strategy 1: gh repo clone (uses gh auth context natively — most reliable)
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    gh repo clone FELix-Bond/Omniclaw . -- --depth=1 --quiet 2>/tmp/clone_err \
-      && echo -e "  \${GREEN}✓ Cloned via gh\${NC}" \
-      || {
-        # Strategy 2: plain HTTPS with token embedded in URL (public repo fallback)
-        TOKEN=\$(gh auth token 2>/dev/null || true)
-        if [ -n "\$TOKEN" ]; then
-          git clone --depth=1 --quiet \
-            "https://\${TOKEN}@github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
-            && echo -e "  \${GREEN}✓ Cloned via HTTPS+token\${NC}" \
-            || clone_failed "\$(cat /tmp/clone_err)"
-        else
-          # Strategy 3: plain public HTTPS — no auth needed for public repos
-          git clone --depth=1 --quiet \
-            "https://github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
-            && echo -e "  \${GREEN}✓ Cloned via public HTTPS\${NC}" \
-            || clone_failed "\$(cat /tmp/clone_err)"
-        fi
-      }
-  else
-    # gh not available — plain public HTTPS
-    git clone --depth=1 --quiet \
-      "https://github.com/FELix-Bond/Omniclaw.git" . 2>/tmp/clone_err \
-      && echo -e "  \${GREEN}✓ Cloned via public HTTPS\${NC}" \
-      || clone_failed "\$(cat /tmp/clone_err)"
-  fi
+# =============================================================================
+# STEP 3 — Pull latest OmniClaw files (clone to TEMP, rsync here, never fails)
+# =============================================================================
+echo -e "\\n\${BLUE}[3/3] Fetching latest OmniClaw files...\${NC}"
+
+OMNICLAW_REPO="https://github.com/FELix-Bond/Omniclaw.git"
+TEMP_DIR=\$(mktemp -d)
+FETCH_OK=false
+
+# Strategy 1: gh repo clone to temp dir
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  gh repo clone FELix-Bond/Omniclaw "\$TEMP_DIR" -- --depth=1 --quiet 2>/dev/null && FETCH_OK=true || true
 fi
 
-# Restore our pre-filled .env (clone may have overwritten it with the example)
-cat > .env << 'ENVEOF'
-# OmniClaw Environment — ${c.companyName}
-# Generated: ${new Date().toISOString()}
-COMPANY_NAME="${c.companyName}"
-OWNER_NAME="${c.ownerName}"
-MISSION="${c.mission}"
-TIMEZONE="${c.timezone}"
-HEARTBEAT_INTERVAL="${c.heartbeat}"
-BUDGET_LIMIT="${c.budgetLimit}"
-DASHBOARD_PORT=${c.dashPort}
-VAULT_PATH="${c.vaultPath}"
-PROJECT_ROOT="${c.projectRoot}"
-NEMOCLAW_RUNTIME="${c.nemoVersion}"
-CLOUD_MODEL="${c.cloudModel}"
-DECISION_MODE="${c.decisionMode}"
-ESCALATION_THRESHOLD="${c.escalationThreshold}"
-AUTO_OPEN_DASHBOARD="${c.autoOpen}"
-GITHUB_USER="${c.githubUser}"
-GITHUB_REPO="${c.githubRepo}"
-REPO_VISIBILITY="${c.repoVisibility}"
+# Strategy 2: HTTPS with embedded token
+if [ "\$FETCH_OK" = false ] && command -v gh >/dev/null 2>&1; then
+  _TOKEN=\$(gh auth token 2>/dev/null || true)
+  [ -n "\$_TOKEN" ] && \
+    git clone --depth=1 --quiet "https://\${_TOKEN}@github.com/FELix-Bond/Omniclaw.git" "\$TEMP_DIR" 2>/dev/null && \
+    FETCH_OK=true || true
+fi
 
-${chain}
+# Strategy 3: plain public HTTPS (public repo — no auth needed)
+if [ "\$FETCH_OK" = false ]; then
+  git clone --depth=1 --quiet "\$OMNICLAW_REPO" "\$TEMP_DIR" 2>/dev/null && FETCH_OK=true || true
+fi
 
-ANTHROPIC_API_KEY="${c.anthropicKey}"
-GOOGLE_AI_API_KEY="${c.googleKey}"
-OPENAI_API_KEY="${c.openaiKey}"
-GROQ_API_KEY="${c.groqKey}"
-OPENROUTER_API_KEY="${c.openrouterKey}"
-MINIMAX_API_KEY="${c.minimaxKey}"
-MISTRAL_API_KEY="${c.mistralKey}"
-FIRECRAWL_API_KEY="${c.firecrawlKey}"
-SKILLSMP_API_KEY="${c.skillsmpKey}"
-TG_TOKEN="${c.tgToken}"
-TG_CHAT_ID="${c.tgChatId}"
-DISCORD_TOKEN="${c.discordToken}"
-DISCORD_CHANNEL_ID="${c.discordChannelId}"
-SUPABASE_URL="${c.supabaseUrl}"
-SUPABASE_KEY="${c.supabaseKey}"
-GOOGLE_DOCS_FOLDER_ID="${c.googleDocsId}"
+if [ "\$FETCH_OK" = true ]; then
+  ok "Latest OmniClaw fetched"
+  # Rsync to current dir — preserve user data, never touch .env
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a \\
+      --exclude='.env' \\
+      --exclude='.env.bak' \\
+      --exclude='memory/' \\
+      --exclude='agents/csuite/' \\
+      --exclude='logs/' \\
+      --exclude='.omniclaw-backup*' \\
+      --exclude='.dashboard.pid' \\
+      "\$TEMP_DIR/" "\$SCRIPT_DIR/"
+    ok "Files updated from GitHub"
+  else
+    # rsync not available (rare on Linux) — use cp
+    cp -r "\$TEMP_DIR/." "\$SCRIPT_DIR/" 2>/dev/null || true
+    ok "Files copied from GitHub"
+  fi
+  rm -rf "\$TEMP_DIR"
+else
+  rm -rf "\$TEMP_DIR" 2>/dev/null || true
+  warn "Could not reach GitHub — continuing with bundled files"
+  warn "(This is fine if you have all files from the ZIP)"
+fi
+
+# Always re-write .env after rsync (rsync excludes it, but belt-and-suspenders)
+cat > ".env" << 'ENVEOF'
+${envBlock}
 ENVEOF
+ok ".env confirmed"
 
-echo -e "  \${GREEN}✓ Latest code pulled. Handing off to setup.sh...\${NC}\\n"
-chmod +x setup.sh
-exec ./setup.sh
+# =============================================================================
+# HAND OFF to the real setup.sh (now updated from GitHub)
+# =============================================================================
+echo -e "\\n\${GREEN}Handing off to setup.sh...\${NC}\\n"
+chmod +x "\$SCRIPT_DIR/setup.sh"
+exec "\$SCRIPT_DIR/setup.sh"
 `;
 }
 
