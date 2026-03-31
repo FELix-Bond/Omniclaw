@@ -90,6 +90,64 @@ OWNER_NAME="${OWNER_NAME:-Felix}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
 
 # =============================================================================
+# KEYCHAIN — save keys from .env, fill gaps from Keychain
+# =============================================================================
+ALL_API_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN VOICEBOX_API_KEY SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
+
+kc_get() {
+  local key="$1"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    security find-generic-password -a "omniclaw" -s "$key" -w 2>/dev/null || echo ""
+  elif command -v secret-tool >/dev/null 2>&1; then
+    secret-tool lookup service "omniclaw" username "$key" 2>/dev/null || echo ""
+  fi
+}
+
+kc_set() {
+  local key="$1" val="$2"
+  [ -z "$val" ] && return
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    security add-generic-password -U -a "omniclaw" -s "$key" -w "$val" 2>/dev/null
+  elif command -v secret-tool >/dev/null 2>&1; then
+    echo "$val" | secret-tool store --label="omniclaw:$key" service "omniclaw" username "$key" 2>/dev/null
+  fi
+}
+
+echo -e "\n${BLUE}Syncing API keys with Keychain and .env...${NC}"
+kc_saved=0; kc_loaded=0
+for key in "${ALL_API_KEYS[@]}"; do
+  env_val="${!key}"
+  if [ -n "$env_val" ]; then
+    # Save to Keychain
+    kc_set "$key" "$env_val"
+    # Also write to .env
+    if grep -q "^${key}=" "$SCRIPT_DIR/.env" 2>/dev/null; then
+      sed -i.bak "s|^${key}=.*|${key}=\"${env_val}\"|" "$SCRIPT_DIR/.env"
+      rm -f "$SCRIPT_DIR/.env.bak"
+    else
+      echo "${key}=\"${env_val}\"" >> "$SCRIPT_DIR/.env"
+    fi
+    ((kc_saved++))
+  else
+    # Key missing from .env — try loading from Keychain
+    kc_val=$(kc_get "$key")
+    if [ -n "$kc_val" ]; then
+      export "$key"="$kc_val"
+      # Write back to .env so it's always in sync
+      if grep -q "^${key}=" "$SCRIPT_DIR/.env" 2>/dev/null; then
+        sed -i.bak "s|^${key}=.*|${key}=\"${kc_val}\"|" "$SCRIPT_DIR/.env"
+        rm -f "$SCRIPT_DIR/.env.bak"
+      else
+        echo "${key}=\"${kc_val}\"" >> "$SCRIPT_DIR/.env"
+      fi
+      ((kc_loaded++))
+    fi
+  fi
+done
+echo -e "  ${GREEN}✓ ${kc_saved} keys saved to Keychain + .env, ${kc_loaded} restored from Keychain → .env${NC}"
+chmod +x "$SCRIPT_DIR/keys.sh" 2>/dev/null || true
+
+# =============================================================================
 # DRY RUN MODE
 # =============================================================================
 if [ "$DRY_RUN" = true ]; then
