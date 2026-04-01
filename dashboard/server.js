@@ -185,6 +185,43 @@ app.post('/api/memory/:file', (req, res) => {
   res.json({ success: true, name: safe });
 });
 
+// Browser launcher — opens a URL in the user's real browser (Chrome, Brave, Safari)
+app.get('/api/browser/open', (req, res) => {
+  const url = req.query.url;
+  if (!url || !url.startsWith('http')) return res.status(400).json({ error: 'valid url required' });
+  const { execSync } = require('child_process');
+  const OS = process.platform;
+  const browsers = [
+    'Google Chrome', 'Brave Browser', 'Firefox', 'Safari'
+  ];
+  try {
+    if (OS === 'darwin') {
+      // Try each browser in order, fall back to default open
+      let opened = false;
+      for (const b of browsers) {
+        try {
+          execSync(`open -a "${b}" "${url}" 2>/dev/null`, { timeout: 5000 });
+          opened = true;
+          res.json({ success: true, browser: b, url });
+          break;
+        } catch (_) {}
+      }
+      if (!opened) {
+        execSync(`open "${url}"`, { timeout: 5000 });
+        res.json({ success: true, browser: 'default', url });
+      }
+    } else if (OS === 'linux') {
+      execSync(`xdg-open "${url}"`, { timeout: 5000 });
+      res.json({ success: true, browser: 'system default', url });
+    } else {
+      execSync(`start "${url}"`, { timeout: 5000 });
+      res.json({ success: true, browser: 'system default', url });
+    }
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Debug — localhost only, shows env load state and which keys are present
 app.get('/api/debug/env', (req, res) => {
   const ip = req.ip || req.connection.remoteAddress || '';
@@ -224,7 +261,11 @@ app.get('/api/settings', (req, res) => {
     const eqIdx = trimmed.indexOf('=');
     if (eqIdx < 0) { settings.push({ type: 'comment', line }); continue; }
     const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed.slice(eqIdx + 1);
+    // Strip surrounding quotes added by save endpoint (or configure.html)
+    let value = trimmed.slice(eqIdx + 1);
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1).replace(/\\"/g, '"');
+    }
     settings.push({ type: 'env', key, value, line });
   }
   res.json({ settings });
@@ -612,7 +653,8 @@ async function callAI(messages, systemPromptOverride) {
 // SHELL:    shell|command
 // =============================================================================
 
-const ACTION_RE = /\[\[ACTION:([^\]\[]+)\]\]/g;
+// Matches [[ACTION:...]] — uses negative lookahead so content can contain [ or ] individually
+const ACTION_RE = /\[\[ACTION:((?:(?!\]\]).)+)\]\]/gs;
 const { execSync } = require('child_process');
 
 // ── Web search: cascade through every configured provider ──────────────────
@@ -704,8 +746,13 @@ async function webFetch(url) {
 
 // ── Shell execution (NemoClaw) ─────────────────────────────────────────────
 function shellExec(command) {
-  const blocked = ['rm -rf /', 'sudo rm -rf', 'mkfs', ':(){:|:&}', 'dd if=/dev/zero', '>/dev/sd'];
-  if (blocked.some(b => command.includes(b))) return '❌ Blocked: destructive command refused';
+  const blocked = [
+    'rm -rf /', 'sudo rm -rf', 'mkfs', ':(){:|:&}', 'dd if=/dev/zero', '>/dev/sd',
+    '.env',          // agents must NEVER write API keys via shell
+    'pip install',   // no arbitrary package installs
+    'npm install -g',// no global npm installs
+  ];
+  if (blocked.some(b => command.includes(b))) return `❌ Blocked: "${command}" is not permitted via shell. Use the Settings panel to manage API keys and configuration.`;
   try {
     return (execSync(command, { timeout: 30000, cwd: ROOT, encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }) || '(no output)').slice(0, 4000);
   } catch (e) { return `Exit ${e.status || 1}: ${(e.stderr || e.message || '').slice(0, 2000)}`; }

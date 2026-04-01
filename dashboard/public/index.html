@@ -457,12 +457,14 @@
     <!-- BROWSER PANEL -->
     <div class="panel" id="panel-browser">
       <div style="max-width:900px">
-        <h3 style="margin:0 0 12px">🌐 Browser</h3>
+        <h3 style="margin:0 0 8px">🌐 Browser</h3>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0 0 12px">Opens URLs in your real browser (Chrome → Brave → Safari). Use "Fetch text" to pull page content into the AI for analysis.</p>
         <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input type="text" id="browserUrl" placeholder="Enter URL or search query..." value="https://google.com" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-size:0.88rem;outline:none" onkeydown="if(event.key==='Enter')loadBrowser()">
-          <button onclick="loadBrowser()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-weight:600">Go</button>
+          <input type="text" id="browserUrl" placeholder="Enter URL..." value="https://google.com" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-size:0.88rem;outline:none" onkeydown="if(event.key==='Enter')loadBrowser()">
+          <button onclick="loadBrowser()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-weight:600">↗ Open</button>
           <button onclick="fetchPageText()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:0.82rem">Fetch text</button>
         </div>
+        <div id="browserLaunchStatus" style="font-size:0.8rem;color:var(--green);margin-bottom:10px;min-height:18px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           <button onclick="quickNav('https://google.com')" class="btn-sm btn-ghost">Google</button>
           <button onclick="quickNav('https://news.ycombinator.com')" class="btn-sm btn-ghost">HN</button>
@@ -472,8 +474,12 @@
           <button onclick="quickNav('https://dashboard.stripe.com')" class="btn-sm btn-ghost">Stripe</button>
           <button onclick="quickNav('https://app.hubspot.com')" class="btn-sm btn-ghost">HubSpot</button>
         </div>
-        <iframe id="browserFrame" src="https://google.com" style="width:100%;height:calc(100vh - 260px);border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
-        <div id="browserTextResult" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:0.82rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;color:var(--text)"></div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:20px;text-align:center;color:var(--muted);font-size:0.85rem">
+          <div style="font-size:2rem;margin-bottom:8px">🌐</div>
+          <div>Enter a URL above and click <strong style="color:var(--text)">↗ Open</strong> — it will launch in Chrome, Brave, or your default browser.</div>
+          <div style="margin-top:8px;font-size:0.78rem">Use <strong style="color:var(--text)">Fetch text</strong> to pull page content for AI analysis without opening a browser window.</div>
+        </div>
+        <div id="browserTextResult" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:0.82rem;max-height:400px;overflow-y:auto;white-space:pre-wrap;color:var(--text)"></div>
       </div>
     </div>
 
@@ -506,16 +512,16 @@
         </div>
 
         <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="filterSettings('')" class="btn-sm btn-ghost" style="border-color:var(--accent);color:var(--accent)">All</button>
-          <button onclick="filterSettings('MODEL_CHAIN')" class="btn-sm btn-ghost">AI Chain</button>
-          <button onclick="filterSettings('ANTHROPIC\|GROQ\|OPENAI\|GEMINI\|OPENROUTER')" class="btn-sm btn-ghost">AI Keys</button>
-          <button onclick="filterSettings('GMAIL\|EMAIL')" class="btn-sm btn-ghost">Email</button>
-          <button onclick="filterSettings('GOOGLE')" class="btn-sm btn-ghost">Google</button>
-          <button onclick="filterSettings('SLACK\|TG_')" class="btn-sm btn-ghost">Comms</button>
-          <button onclick="filterSettings('STRIPE')" class="btn-sm btn-ghost">Stripe</button>
-          <button onclick="filterSettings('SUPABASE')" class="btn-sm btn-ghost">Database</button>
-          <button onclick="filterSettings('GITHUB')" class="btn-sm btn-ghost">GitHub</button>
-          <button onclick="filterSettings('BRAVE\|TAVILY\|SERPAPI\|PERPLEXITY')" class="btn-sm btn-ghost">Search</button>
+          <button onclick="filterSettings([])" class="btn-sm btn-ghost" style="border-color:var(--accent);color:var(--accent)">All</button>
+          <button onclick="filterSettings(['MODEL_CHAIN'])" class="btn-sm btn-ghost">AI Chain</button>
+          <button onclick="filterSettings(['ANTHROPIC','GROQ','OPENAI','GEMINI','OPENROUTER'])" class="btn-sm btn-ghost">AI Keys</button>
+          <button onclick="filterSettings(['GMAIL','EMAIL'])" class="btn-sm btn-ghost">Email</button>
+          <button onclick="filterSettings(['GOOGLE'])" class="btn-sm btn-ghost">Google</button>
+          <button onclick="filterSettings(['SLACK','TG_','DISCORD','TELEGRAM'])" class="btn-sm btn-ghost">Comms</button>
+          <button onclick="filterSettings(['STRIPE'])" class="btn-sm btn-ghost">Stripe</button>
+          <button onclick="filterSettings(['SUPABASE'])" class="btn-sm btn-ghost">Database</button>
+          <button onclick="filterSettings(['GITHUB'])" class="btn-sm btn-ghost">GitHub</button>
+          <button onclick="filterSettings(['BRAVE','TAVILY','SERPAPI','PERPLEXITY','GOOGLE_CSE'])" class="btn-sm btn-ghost">Search</button>
         </div>
         <div id="settingsGrid" style="display:grid;gap:10px">
           <div style="color:var(--muted)">Loading settings...</div>
@@ -946,18 +952,27 @@ async function sendAgentChat() {
 // =============================================================================
 // BROWSER PANEL
 // =============================================================================
-function loadBrowser() {
+async function loadBrowser() {
   const url = document.getElementById('browserUrl').value.trim();
   if (!url) return;
   const full = url.startsWith('http') ? url : 'https://' + url;
-  document.getElementById('browserFrame').src = full;
+  const status = document.getElementById('browserLaunchStatus');
+  status.textContent = 'Opening...';
+  try {
+    const r = await fetch(`/api/browser/open?url=${encodeURIComponent(full)}`);
+    const d = await r.json();
+    status.textContent = d.success ? `✓ Opened in ${d.browser}` : `✗ ${d.error}`;
+  } catch(e) {
+    // Fallback: open in new tab
+    window.open(full, '_blank');
+    status.textContent = '✓ Opened in new tab';
+  }
   document.getElementById('browserTextResult').style.display = 'none';
 }
 
 function quickNav(url) {
   document.getElementById('browserUrl').value = url;
-  document.getElementById('browserFrame').src = url;
-  document.getElementById('browserTextResult').style.display = 'none';
+  loadBrowser();
 }
 
 async function fetchPageText() {
@@ -1050,13 +1065,29 @@ function renderLLMChain(settings) {
         <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(240,180,41,0.15);color:var(--yellow)">⚠ No Key</span>
       </div>`;
     } else {
+      // No explicit chain set — check if any provider key is configured (auto-detection)
+      const autoProvider = LLM_PROVIDERS.find(p => p.keyEnv ? !!envMap[p.keyEnv] : false);
+      if (i === 0 && autoProvider) {
+        // Show auto-detected primary provider
+        return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--green);border-radius:8px">
+          <span style="font-size:1.1rem">${autoProvider.icon}</span>
+          <div>
+            <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${autoProvider.label} <span style="font-weight:400;color:var(--muted)">(auto-detected)</span></div>
+            <div style="font-size:0.75rem;color:var(--muted);font-family:monospace">${autoProvider.defaultModel} — set ${slot.key} to pin a specific model</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+            <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(61,214,140,0.15);color:var(--green)">✓ Active</span>
+            <span style="font-size:0.68rem;color:var(--muted)">Auto</span>
+          </div>
+        </div>`;
+      }
       return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;opacity:0.6">
         <span style="font-size:1.1rem">➕</span>
         <div>
-          <div style="font-weight:600;font-size:0.85rem;color:var(--muted)">${slot.label} — Not configured</div>
+          <div style="font-weight:600;font-size:0.85rem;color:var(--muted)">${slot.label} — Optional fallback</div>
           <div style="font-size:0.75rem;color:var(--muted)">Set ${slot.key} = provider::model (e.g. groq::llama-3.3-70b-versatile)</div>
         </div>
-        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--muted)">Empty</span>
+        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--muted)">Not set</span>
       </div>`;
     }
   }).join('');
@@ -1090,9 +1121,11 @@ function renderLLMChain(settings) {
   }).join('');
 }
 
-function filterSettings(prefix) {
-  document.querySelectorAll('[id^="sf-"]').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--muted)'; });
-  const filtered = prefix ? allSettings.filter(s => s.key.includes(prefix)) : allSettings;
+function filterSettings(terms) {
+  const arr = Array.isArray(terms) ? terms : [terms];
+  const filtered = arr.length === 0 || (arr.length === 1 && arr[0] === '')
+    ? allSettings
+    : allSettings.filter(s => arr.some(t => s.key.toUpperCase().includes(t.toUpperCase())));
   renderSettings(filtered);
 }
 
