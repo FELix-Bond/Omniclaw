@@ -171,7 +171,7 @@
     <div class="nav-item" onclick="showPanel('agents')"><span class="nav-icon">🤖</span> C-Suite Agents</div>
     <div class="nav-item" onclick="showPanel('decisions')"><span class="nav-icon">⚖️</span> Decision Engine</div>
     <div class="nav-item" onclick="showPanel('orgchart')"><span class="nav-icon">🏛️</span> Org Chart</div>
-    <div class="nav-item" onclick="showPanel('github')"><span class="nav-icon">🐙</span> GitHub</div>
+    <div class="nav-item" onclick="showPanel('github')" style="display:none" id="nav-github-hidden"></div>
     <div class="nav-item" onclick="showPanel('heartbeat')"><span class="nav-icon">💓</span> Heartbeat</div>
     <div class="nav-item" onclick="showPanel('memory')"><span class="nav-icon">🧠</span> Memory</div>
     <div class="nav-item" onclick="showPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
@@ -400,7 +400,19 @@
     <div class="panel" id="panel-openclaw">
       <div style="max-width:860px">
         <h3 style="margin:0 0 4px">🦾 OpenClaw — The Backbone</h3>
-        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 24px">OpenClaw is the execution layer. Every agent, skill, action, and integration runs through it. Paperclip (this dashboard) sits on top as the director — it orchestrates, visualises, and routes work to OpenClaw agents.</p>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 16px">OpenClaw is the execution layer. Every agent, skill, action, and integration runs through it. Paperclip (this dashboard) sits on top as the director — it orchestrates, visualises, and routes work to OpenClaw agents.</p>
+
+        <!-- Native dashboard link -->
+        <div style="background:linear-gradient(135deg,rgba(91,141,238,0.12),rgba(91,141,238,0.03));border:1px solid var(--accent);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-weight:700;color:var(--accent);font-size:0.92rem">OpenClaw Native Dashboard</div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:3px">Runs at <code style="color:var(--text)">http://127.0.0.1:18789</code> — start OpenClaw first, then open below</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('browserUrl').value='http://127.0.0.1:18789';showPanel('browser');loadBrowser()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:7px 16px;cursor:pointer;font-weight:600;font-size:0.82rem">Open in Browser panel</button>
+            <a href="http://127.0.0.1:18789" target="_blank" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:0.8rem;text-decoration:none;display:inline-flex;align-items:center">↗ New tab</a>
+          </div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
             <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">🏗️ Architecture</div>
@@ -473,15 +485,37 @@
           <button class="btn-sm" onclick="loadSettings()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Refresh</button>
         </div>
         <p style="color:var(--muted);font-size:0.82rem;margin:0 0 20px">Edit any setting. Changes are written to your <code>.env</code> file immediately. Restart the dashboard for changes to take full effect.</p>
+
+        <!-- LLM Chain config — top of settings -->
+        <div style="background:var(--surface2);border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:20px">
+          <div style="font-weight:700;margin-bottom:4px;color:var(--accent)">🧠 AI Model Chain</div>
+          <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">The system tries each provider in order. Add API keys to activate more fallbacks.</p>
+          <div id="llmChain" style="display:grid;gap:8px;margin-bottom:14px"></div>
+          <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:8px">AVAILABLE PROVIDERS</div>
+          <div id="llmProviders" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        </div>
+
+        <!-- GitHub integration (moved from nav) -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
+          <div style="font-weight:700;margin-bottom:4px">🐙 GitHub Integration</div>
+          <div id="githubSettingsStatus" style="font-size:0.82rem;color:var(--muted);margin-bottom:10px">Loading...</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-sm" onclick="refreshGithub();showPanel('github')" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Open GitHub Panel</button>
+            <button class="btn-sm" onclick="githubPush()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Push Now</button>
+          </div>
+        </div>
+
         <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="filterSettings('')" id="sf-all" class="btn-sm btn-ghost" style="border-color:var(--accent);color:var(--accent)">All</button>
-          <button onclick="filterSettings('AI_')" id="sf-ai" class="btn-sm btn-ghost">AI / Models</button>
-          <button onclick="filterSettings('GMAIL')" id="sf-email" class="btn-sm btn-ghost">Email</button>
-          <button onclick="filterSettings('GOOGLE')" id="sf-google" class="btn-sm btn-ghost">Google</button>
-          <button onclick="filterSettings('SLACK')" id="sf-slack" class="btn-sm btn-ghost">Slack</button>
-          <button onclick="filterSettings('STRIPE')" id="sf-stripe" class="btn-sm btn-ghost">Stripe</button>
-          <button onclick="filterSettings('SUPABASE')" id="sf-db" class="btn-sm btn-ghost">Database</button>
-          <button onclick="filterSettings('GITHUB')" id="sf-gh" class="btn-sm btn-ghost">GitHub</button>
+          <button onclick="filterSettings('')" class="btn-sm btn-ghost" style="border-color:var(--accent);color:var(--accent)">All</button>
+          <button onclick="filterSettings('MODEL_CHAIN')" class="btn-sm btn-ghost">AI Chain</button>
+          <button onclick="filterSettings('ANTHROPIC\|GROQ\|OPENAI\|GEMINI\|OPENROUTER')" class="btn-sm btn-ghost">AI Keys</button>
+          <button onclick="filterSettings('GMAIL\|EMAIL')" class="btn-sm btn-ghost">Email</button>
+          <button onclick="filterSettings('GOOGLE')" class="btn-sm btn-ghost">Google</button>
+          <button onclick="filterSettings('SLACK\|TG_')" class="btn-sm btn-ghost">Comms</button>
+          <button onclick="filterSettings('STRIPE')" class="btn-sm btn-ghost">Stripe</button>
+          <button onclick="filterSettings('SUPABASE')" class="btn-sm btn-ghost">Database</button>
+          <button onclick="filterSettings('GITHUB')" class="btn-sm btn-ghost">GitHub</button>
+          <button onclick="filterSettings('BRAVE\|TAVILY\|SERPAPI\|PERPLEXITY')" class="btn-sm btn-ghost">Search</button>
         </div>
         <div id="settingsGrid" style="display:grid;gap:10px">
           <div style="color:var(--muted)">Loading settings...</div>
@@ -539,6 +573,42 @@
       <div style="max-width:960px">
         <h3 style="margin:0 0 4px">Agent Pool</h3>
         <p style="color:var(--muted);font-size:0.85rem;margin:0 0 16px">187 production-ready specialist agents from <a href="https://github.com/mergisi/awesome-openclaw-agents" target="_blank" style="color:var(--accent)">awesome-openclaw-agents</a>. Deploy any agent temporarily — it spins up as a focused worker and can be chatted with or undeployed when the job's done.</p>
+
+        <!-- ── SUBAGENT DISPATCHER ─────────────────────────────────────────── -->
+        <div style="background:var(--surface2);border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-weight:700;color:var(--accent)">⚡ Subagent Dispatcher</div>
+            <div id="subagentAnthropicBadge" style="font-size:0.72rem;padding:2px 8px;border-radius:8px;background:rgba(61,214,140,0.12);color:var(--green)">Loading...</div>
+          </div>
+          <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Dispatch any specialist subagent on a focused task. Runs via Anthropic Claude (preferred) or your active AI chain — no Codex CLI needed.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">SUBAGENT TYPE</div>
+              <select id="subagentSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:0.82rem;outline:none">
+                <option value="">Select specialist...</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">CONTEXT (optional)</div>
+              <input type="text" id="subagentContext" placeholder="e.g. our SaaS product URL, code snippet..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:0.82rem;outline:none">
+            </div>
+          </div>
+          <div style="margin-bottom:8px">
+            <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">TASK</div>
+            <textarea id="subagentTask" rows="2" placeholder="Describe exactly what you want this specialist to produce..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:0.82rem;outline:none;resize:vertical;font-family:inherit"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="runSubagent()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 20px;cursor:pointer;font-size:0.85rem;font-weight:600">▶ Dispatch</button>
+            <div id="subagentStatus" style="font-size:0.8rem;color:var(--muted)"></div>
+          </div>
+          <div id="subagentResult" style="display:none;margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div id="subagentResultLabel" style="font-weight:600;font-size:0.85rem"></div>
+              <button onclick="copySubagentResult()" style="font-size:0.72rem;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 8px;cursor:pointer">Copy</button>
+            </div>
+            <pre id="subagentResultText" style="font-size:0.8rem;white-space:pre-wrap;word-break:break-word;color:var(--text);font-family:inherit;margin:0;max-height:400px;overflow-y:auto"></pre>
+          </div>
+        </div>
 
         <!-- Deployed agents -->
         <div class="ap-section">
@@ -602,7 +672,7 @@ function showPanel(id) {
   if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
   if (id === 'integrations') loadIntegrations();
   if (id === 'skills') loadSkills();
-  if (id === 'agentpool') loadAgentPool();
+  if (id === 'agentpool') { loadAgentPool(); loadSubagentList(); }
   if (id === 'agentchat') initAgentChatTabs();
   if (id === 'openclaw') loadOpenclawStatus();
   if (id === 'settings') loadSettings();
@@ -912,13 +982,112 @@ async function fetchPageText() {
 // =============================================================================
 let allSettings = [];
 
+// LLM provider metadata (static — keys are env var prefixes)
+const LLM_PROVIDERS = [
+  { id: 'anthropic', label: 'Anthropic Claude', icon: '🧠', keyEnv: 'ANTHROPIC_API_KEY', type: 'cloud', defaultModel: 'claude-haiku-4-5-20251001', badge: 'Cloud' },
+  { id: 'openai',    label: 'OpenAI GPT',       icon: '🤖', keyEnv: 'OPENAI_API_KEY',    type: 'cloud', defaultModel: 'gpt-4o-mini',              badge: 'Cloud' },
+  { id: 'groq',      label: 'Groq',             icon: '⚡', keyEnv: 'GROQ_API_KEY',      type: 'cloud', defaultModel: 'llama-3.3-70b-versatile',  badge: 'Cloud' },
+  { id: 'gemini',    label: 'Google Gemini',    icon: '✨', keyEnv: 'GOOGLE_AI_API_KEY', type: 'cloud', defaultModel: 'gemini-2.0-flash-exp',      badge: 'Cloud' },
+  { id: 'openrouter',label: 'OpenRouter',       icon: '🔀', keyEnv: 'OPENROUTER_API_KEY',type: 'cloud', defaultModel: 'gemma-3-12b-it:free',      badge: 'Cloud' },
+  { id: 'ollama',    label: 'Ollama (Local)',   icon: '🖥️', keyEnv: null,                type: 'local', defaultModel: 'llama3.2',                 badge: 'Local' },
+];
+
 async function loadSettings() {
   try {
     const r = await fetch('/api/settings');
     const d = await r.json();
     allSettings = (d.settings || []).filter(s => s.type === 'env');
     renderSettings(allSettings);
+    renderLLMChain(allSettings);
   } catch(e) { document.getElementById('settingsGrid').innerHTML = `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
+}
+
+function renderLLMChain(settings) {
+  const envMap = {};
+  settings.forEach(s => { envMap[s.key] = s.value; });
+
+  // Chain slots (MODEL_CHAIN_1/2/3)
+  const chainSlots = [
+    { label: '1st', key: 'MODEL_CHAIN_1' },
+    { label: '2nd', key: 'MODEL_CHAIN_2' },
+    { label: '3rd', key: 'MODEL_CHAIN_3' },
+  ];
+
+  const chainEl = document.getElementById('llmChain');
+  if (!chainEl) return;
+
+  chainEl.innerHTML = chainSlots.map((slot, i) => {
+    const val = envMap[slot.key] || '';
+    const colonIdx = val.indexOf('::');
+    const providerId = colonIdx > 0 ? val.slice(0, colonIdx) : '';
+    const model = colonIdx > 0 ? val.slice(colonIdx + 2) : '';
+    const meta = LLM_PROVIDERS.find(p => p.id === providerId);
+    const hasKey = meta ? (meta.keyEnv ? !!envMap[meta.keyEnv] : true) : false;
+    const isConfigured = val && hasKey;
+
+    const colors = ['var(--accent)', 'var(--green)', 'var(--yellow)'];
+    const color = colors[i];
+
+    if (isConfigured) {
+      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid ${color};border-radius:8px">
+        <span style="font-size:1.1rem">${meta.icon}</span>
+        <div>
+          <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${meta.label}</div>
+          <div style="font-size:0.75rem;color:var(--muted);font-family:monospace">${model || meta.defaultModel}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(61,214,140,0.15);color:var(--green)">✓ Active</span>
+          <span style="font-size:0.68rem;color:var(--muted)">${meta.badge}</span>
+        </div>
+      </div>`;
+    } else if (val && !hasKey) {
+      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--yellow);border-radius:8px">
+        <span style="font-size:1.1rem">${meta ? meta.icon : '⚠️'}</span>
+        <div>
+          <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${meta ? meta.label : providerId}</div>
+          <div style="font-size:0.75rem;color:var(--yellow)">Missing API key: ${meta?.keyEnv || 'unknown'}</div>
+        </div>
+        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(240,180,41,0.15);color:var(--yellow)">⚠ No Key</span>
+      </div>`;
+    } else {
+      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;opacity:0.6">
+        <span style="font-size:1.1rem">➕</span>
+        <div>
+          <div style="font-weight:600;font-size:0.85rem;color:var(--muted)">${slot.label} — Not configured</div>
+          <div style="font-size:0.75rem;color:var(--muted)">Set ${slot.key} = provider::model (e.g. groq::llama-3.3-70b-versatile)</div>
+        </div>
+        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--muted)">Empty</span>
+      </div>`;
+    }
+  }).join('');
+
+  // All providers grid
+  const provEl = document.getElementById('llmProviders');
+  if (!provEl) return;
+
+  provEl.innerHTML = LLM_PROVIDERS.map(p => {
+    const hasKey = p.keyEnv ? !!envMap[p.keyEnv] : true; // Ollama has no key
+    const keyVal = p.keyEnv ? (envMap[p.keyEnv] || '') : '(no key needed)';
+    const maskedKey = keyVal && keyVal !== '(no key needed)' ? keyVal.slice(0, 6) + '••••••••' + keyVal.slice(-4) : keyVal;
+    const isInChain = chainSlots.some(slot => (envMap[slot.key] || '').startsWith(p.id + '::'));
+
+    return `<div style="padding:10px 12px;background:var(--surface);border:1px solid ${hasKey ? 'var(--border)' : 'var(--surface2)'};border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:0.85rem;font-weight:600">${p.icon} ${p.label}</span>
+        <div style="display:flex;gap:4px">
+          <span style="font-size:0.65rem;padding:1px 6px;border-radius:6px;background:${p.type==='local'?'rgba(124,92,191,0.15)':'rgba(91,141,238,0.12)'};color:${p.type==='local'?'var(--purple)':'var(--accent)'}">${p.badge}</span>
+          ${isInChain ? `<span style="font-size:0.65rem;padding:1px 6px;border-radius:6px;background:rgba(61,214,140,0.12);color:var(--green)">In Chain</span>` : ''}
+        </div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--muted);font-family:monospace;margin-bottom:6px">${maskedKey || 'No key set'}</div>
+      <div style="display:flex;gap:4px">
+        <span style="font-size:0.68rem;padding:2px 6px;border-radius:5px;background:${hasKey?'rgba(61,214,140,0.12)':'rgba(224,92,92,0.1)'};color:${hasKey?'var(--green)':'var(--red)'}">
+          ${hasKey ? '✓ Key OK' : '✗ No Key'}
+        </span>
+        <span style="font-size:0.68rem;color:var(--muted);padding:2px 6px">${p.defaultModel}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function filterSettings(prefix) {
@@ -1193,6 +1362,73 @@ async function loadSkills() {
 let allPoolAgents = [];
 let deployedAgentIds = new Set();
 let activeCategoryFilter = '';
+
+// =============================================================================
+// SUBAGENT DISPATCHER
+// =============================================================================
+async function loadSubagentList() {
+  try {
+    const r = await fetch('/api/subagent/list');
+    const d = await r.json();
+    const sel = document.getElementById('subagentSelect');
+    const badge = document.getElementById('subagentAnthropicBadge');
+    if (badge) {
+      badge.textContent = d.anthropicReady ? '🧠 Anthropic Claude — preferred' : '⚠ No Anthropic key — using chain fallback';
+      badge.style.background = d.anthropicReady ? 'rgba(61,214,140,0.12)' : 'rgba(240,180,41,0.12)';
+      badge.style.color = d.anthropicReady ? 'var(--green)' : 'var(--yellow)';
+    }
+    if (!sel) return;
+    // Group by category
+    const cats = {};
+    (d.subagents || []).forEach(s => { (cats[s.category] = cats[s.category] || []).push(s); });
+    sel.innerHTML = '<option value="">Select specialist...</option>' +
+      Object.entries(cats).map(([cat, agents]) =>
+        `<optgroup label="${cat}">${agents.map(a => `<option value="${a.id}">${a.icon} ${a.label} — ${a.description}</option>`).join('')}</optgroup>`
+      ).join('');
+  } catch(e) { console.warn('Subagent list unavailable:', e.message); }
+}
+
+async function runSubagent() {
+  const agentType = document.getElementById('subagentSelect').value;
+  const task = document.getElementById('subagentTask').value.trim();
+  const context = document.getElementById('subagentContext').value.trim();
+  const statusEl = document.getElementById('subagentStatus');
+  const resultEl = document.getElementById('subagentResult');
+  const resultLabel = document.getElementById('subagentResultLabel');
+  const resultText = document.getElementById('subagentResultText');
+
+  if (!agentType) { statusEl.textContent = '⚠ Select a subagent type first'; return; }
+  if (!task) { statusEl.textContent = '⚠ Enter a task description'; return; }
+
+  statusEl.textContent = '⏳ Dispatching subagent... (may take 20-60s for deep research)';
+  resultEl.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/subagent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentType, task, context }),
+    });
+    const d = await r.json();
+    if (d.error) { statusEl.textContent = `✗ Error: ${d.error}`; return; }
+    statusEl.textContent = `✓ ${d.agent} completed`;
+    resultLabel.textContent = `${d.icon} ${d.agent} — ${d.category}`;
+    resultText.textContent = d.result;
+    resultEl.style.display = 'block';
+    resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(e) {
+    statusEl.textContent = `✗ Failed: ${e.message}`;
+  }
+}
+
+function copySubagentResult() {
+  const text = document.getElementById('subagentResultText').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+}
 
 async function loadAgentPool() {
   await refreshDeployed();

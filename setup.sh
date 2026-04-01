@@ -249,6 +249,27 @@ else
 fi
 export GIT_TERMINAL_PROMPT=0
 
+# Browsers (macOS only — non-fatal, skipped on Linux/WSL)
+if [ "$OS" = "macos" ] && command -v brew >/dev/null 2>&1; then
+  if ! [ -d "/Applications/Google Chrome.app" ] && ! [ -d "$HOME/Applications/Google Chrome.app" ]; then
+    warn "Chrome not found — installing (this may take a minute)..."
+    brew install --cask google-chrome 2>/dev/null \
+      && ok "Google Chrome installed" \
+      || warn "Chrome install failed — download from google.com/chrome"
+  else
+    ok "Google Chrome already installed"
+  fi
+
+  if ! [ -d "/Applications/Tandem.app" ] && ! [ -d "$HOME/Applications/Tandem.app" ]; then
+    warn "Tandem not found — installing..."
+    brew install --cask tandem 2>/dev/null \
+      && ok "Tandem installed" \
+      || warn "Tandem not in Homebrew — download from tandem.chat"
+  else
+    ok "Tandem already installed"
+  fi
+fi
+
 # =============================================================================
 # [3] DIRECTORY STRUCTURE
 # =============================================================================

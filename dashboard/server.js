@@ -3,6 +3,15 @@
  * Real-time agent status, decision engine, heartbeat monitor
  */
 
+// Self-healing: catch any unhandled crash and keep the process alive
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] Uncaught exception — server self-healing:', err.message);
+  console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH] Unhandled promise rejection — server self-healing:', reason?.message || reason);
+});
+
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const http = require('http');
@@ -362,65 +371,165 @@ ${ownerProfile ? '\nOwner context:\n' + ownerProfile.slice(0, 800) : ''}
 ${profile ? '\nYour persona:\n' + profile.slice(0, 400) : ''}`;
 }
 
+// Per-provider rate limit cooldowns (429 → skip for 90s)
+const providerCooldown = {};
+function isOnCooldown(provider) {
+  const until = providerCooldown[provider];
+  return until && Date.now() < until;
+}
+function setCooldown(provider, ms = 90000) {
+  providerCooldown[provider] = Date.now() + ms;
+  console.log(`[CHAT] ${provider} on cooldown for ${ms/1000}s`);
+}
+
 async function callAI(messages, systemPromptOverride) {
   const sysPrompt = systemPromptOverride || getSystemPrompt();
-  // Build chain from MODEL_CHAIN vars, then auto-detect any configured keys as fallback
+
+  // Build primary chain from MODEL_CHAIN vars
   const chainVars = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
+
+  // Auto-detect any configured provider not already in chain as further fallbacks
   const autoFallbacks = [];
-  if (!chainVars.some(c => c.startsWith('anthropic')) && process.env.ANTHROPIC_API_KEY) autoFallbacks.push('anthropic::claude-haiku-4-5-20251001');
-  if (!chainVars.some(c => c.startsWith('groq'))      && process.env.GROQ_API_KEY)      autoFallbacks.push('groq::llama-3.3-70b-versatile');
-  if (!chainVars.some(c => c.startsWith('gemini'))    && process.env.GOOGLE_AI_API_KEY) autoFallbacks.push('gemini::gemini-1.5-flash');
-  if (!chainVars.some(c => c.startsWith('openrouter'))&& process.env.OPENROUTER_API_KEY)autoFallbacks.push('openrouter::meta-llama/llama-3.1-8b-instruct:free');
+  if (!chainVars.some(c => c.startsWith('anthropic')) && process.env.ANTHROPIC_API_KEY)
+    autoFallbacks.push('anthropic::claude-haiku-4-5-20251001');
+  if (!chainVars.some(c => c.startsWith('openai')) && process.env.OPENAI_API_KEY)
+    autoFallbacks.push('openai::gpt-4o-mini');
+  if (!chainVars.some(c => c.startsWith('groq')) && process.env.GROQ_API_KEY)
+    autoFallbacks.push('groq::llama-3.3-70b-versatile');
+  if (!chainVars.some(c => c.startsWith('gemini')) && process.env.GOOGLE_AI_API_KEY)
+    autoFallbacks.push('gemini::gemini-2.0-flash-exp');
+  if (!chainVars.some(c => c.startsWith('openrouter')) && process.env.OPENROUTER_API_KEY)
+    autoFallbacks.push('openrouter::google/gemma-3-12b-it:free');
+  // Ollama local always last (no key needed)
+  autoFallbacks.push('ollama::llama3.2');
+
   const chain = [...chainVars, ...autoFallbacks];
 
   for (const slot of chain) {
-    const [provider, model] = (slot || '').split('::');
+    const colonIdx = (slot || '').indexOf('::');
+    if (colonIdx < 0) continue;
+    const provider = slot.slice(0, colonIdx);
+    const model = slot.slice(colonIdx + 2);
+
+    // Skip providers on cooldown (rate-limited)
+    if (isOnCooldown(provider)) continue;
+
     try {
+      // ── Anthropic Claude ──────────────────────────────────────────
       if (provider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
         const r = await axios.post('https://api.anthropic.com/v1/messages', {
-          model: model || 'claude-sonnet-4-6',
-          max_tokens: 1024,
+          model: model || 'claude-haiku-4-5-20251001',
+          max_tokens: 2048,
           system: sysPrompt,
           messages,
-        }, { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 30000 });
+        }, { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 45000 });
         return r.data.content[0].text;
       }
+
+      // ── OpenAI ────────────────────────────────────────────────────
+      if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+        const r = await axios.post('https://api.openai.com/v1/chat/completions', {
+          model: model || 'gpt-4o-mini',
+          messages: [{ role: 'system', content: sysPrompt }, ...messages],
+          max_tokens: 2048,
+        }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, timeout: 45000 });
+        return r.data.choices[0].message.content;
+      }
+
+      // ── Groq ──────────────────────────────────────────────────────
       if (provider === 'groq' && process.env.GROQ_API_KEY) {
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: model || 'llama-3.3-70b-versatile',  // updated model name
+          model: model || 'llama-3.3-70b-versatile',
           messages: [{ role: 'system', content: sysPrompt }, ...messages],
-          max_tokens: 1024,
+          max_tokens: 2048,
         }, { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 30000 });
         return r.data.choices[0].message.content;
       }
+
+      // ── Google Gemini ─────────────────────────────────────────────
       if (provider === 'gemini' && process.env.GOOGLE_AI_API_KEY) {
-        const geminiModel = model || 'gemini-1.5-flash';
-        const r = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
-          { contents: [{ role: 'user', parts: [{ text: sysPrompt + '\n\n' + messages.map(m => `${m.role}: ${m.content}`).join('\n') }] }] },
-          { timeout: 30000 }
-        );
-        return r.data.candidates[0].content.parts[0].text;
+        // Try specified model first, then fallback models
+        const geminiModels = [
+          model,
+          'gemini-2.0-flash-exp',
+          'gemini-2.0-flash',
+          'gemini-1.5-flash-latest',
+          'gemini-1.5-flash',
+          'gemini-1.5-pro-latest',
+        ].filter(Boolean);
+        for (const gm of geminiModels) {
+          try {
+            const r = await axios.post(
+              `https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
+              { contents: [{ parts: [{ text: `${sysPrompt}\n\n${messages.map(m => `${m.role}: ${m.content}`).join('\n')}` }] }] },
+              { timeout: 30000 }
+            );
+            return r.data.candidates[0].content.parts[0].text;
+          } catch (ge) {
+            if (ge.response?.status === 404) continue; // try next model
+            throw ge;
+          }
+        }
+        throw new Error('All Gemini models unavailable');
       }
+
+      // ── OpenRouter ────────────────────────────────────────────────
       if (provider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
-        const r = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-          model: model || 'meta-llama/llama-3.1-8b-instruct:free',
-          messages: [{ role: 'system', content: sysPrompt }, ...messages],
-        }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'HTTP-Referer': 'https://omniclaw.ai' }, timeout: 30000 });
-        return r.data.choices[0].message.content;
+        // Try specified model, then fallback free models
+        const orModels = [
+          model,
+          'google/gemma-3-12b-it:free',
+          'meta-llama/llama-3.1-8b-instruct:free',
+          'mistralai/mistral-7b-instruct:free',
+          'qwen/qwen-2.5-7b-instruct:free',
+        ].filter(Boolean);
+        for (const om of orModels) {
+          try {
+            const r = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+              model: om,
+              messages: [{ role: 'system', content: sysPrompt }, ...messages],
+              max_tokens: 1024,
+            }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'HTTP-Referer': 'https://github.com/FELix-Bond/Omniclaw', 'X-Title': 'OmniClaw' }, timeout: 30000 });
+            return r.data.choices[0].message.content;
+          } catch (oe) {
+            if (oe.response?.status === 404) continue;
+            throw oe;
+          }
+        }
+        throw new Error('All OpenRouter models unavailable');
       }
+
+      // ── Ollama (local) ────────────────────────────────────────────
       if (provider === 'ollama') {
-        const r = await axios.post('http://localhost:11434/api/chat', {
-          model: model || 'llama3.1', stream: false,
-          messages: [{ role: 'system', content: sysPrompt }, ...messages],
-        }, { timeout: 60000 });
-        return r.data.message.content;
+        const ollamaModels = [model, 'llama3.2', 'llama3.1', 'llama3', 'mistral', 'gemma2'].filter(Boolean);
+        for (const om of ollamaModels) {
+          try {
+            const r = await axios.post('http://localhost:11434/api/chat', {
+              model: om, stream: false,
+              messages: [{ role: 'system', content: sysPrompt }, ...messages],
+            }, { timeout: 60000 });
+            return r.data.message.content;
+          } catch (oe) {
+            if (oe.code === 'ECONNREFUSED') break; // Ollama not running, skip all
+            continue;
+          }
+        }
+        throw new Error('Ollama not available');
       }
+
     } catch (e) {
-      console.log(`[CHAT] ${provider} failed: ${e.message} — trying next`);
+      const status = e.response?.status;
+      if (status === 429) {
+        setCooldown(provider, 90000); // rate limited — 90s cooldown
+      } else if (status === 401 || status === 403) {
+        setCooldown(provider, 3600000); // bad key — 1hr cooldown
+        console.log(`[CHAT] ${provider} auth failed — check API key`);
+      } else {
+        console.log(`[CHAT] ${provider}${model?'/'+model:''} failed (${status||e.code||e.message}) — trying next`);
+      }
     }
   }
-  return 'No AI provider is configured or responding. Add an API key to your .env file (ANTHROPIC_API_KEY, GROQ_API_KEY, or GOOGLE_AI_API_KEY).';
+  return '⚠️ All AI providers are unavailable right now (rate limits or missing keys). Check Settings → LLM Configuration or wait 90 seconds for rate limits to clear.';
 }
 
 // =============================================================================
@@ -450,48 +559,56 @@ const ACTION_RE = /\[\[ACTION:([^\]\[]+)\]\]/g;
 const { execSync } = require('child_process');
 
 // ── Web search: cascade through every configured provider ──────────────────
+// Uses the same providerCooldown map as callAI — 429/401 → 90s/1hr cooldown
+function handleSearchError(provider, e) {
+  const status = e.response?.status;
+  if (status === 429) { setCooldown(`search_${provider}`, 90000); console.log(`[SEARCH] ${provider} rate-limited — 90s cooldown`); }
+  else if (status === 401 || status === 403) { setCooldown(`search_${provider}`, 3600000); console.log(`[SEARCH] ${provider} auth failed — 1hr cooldown`); }
+  else { console.log(`[SEARCH] ${provider} failed:`, e.message); }
+}
+
 async function webSearch(query) {
-  if (process.env.BRAVE_API_KEY) {
+  if (process.env.BRAVE_API_KEY && !isOnCooldown('search_brave')) {
     try {
       const r = await axios.get('https://api.search.brave.com/res/v1/web/search', {
-        headers: { Accept: 'application/json', 'X-Subscription-Token': process.env.BRAVE_API_KEY },
+        headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': process.env.BRAVE_API_KEY },
         params: { q: query, count: 6 }, timeout: 10000,
       });
       const hits = (r.data.web?.results || []).slice(0, 6);
       if (hits.length) return hits.map(h => `**${h.title}**\n${h.url}\n${h.description || ''}`).join('\n\n');
-    } catch (e) { console.log('[SEARCH] Brave failed:', e.message); }
+    } catch (e) { handleSearchError('brave', e); }
   }
-  if (process.env.PERPLEXITY_API_KEY) {
+  if (process.env.PERPLEXITY_API_KEY && !isOnCooldown('search_perplexity')) {
     try {
       const r = await axios.post('https://api.perplexity.ai/chat/completions',
         { model: 'sonar', messages: [{ role: 'user', content: query }] },
         { headers: { Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}` }, timeout: 20000 });
       return r.data.choices[0].message.content;
-    } catch (e) { console.log('[SEARCH] Perplexity failed:', e.message); }
+    } catch (e) { handleSearchError('perplexity', e); }
   }
-  if (process.env.TAVILY_API_KEY) {
+  if (process.env.TAVILY_API_KEY && !isOnCooldown('search_tavily')) {
     try {
       const r = await axios.post('https://api.tavily.com/search',
         { api_key: process.env.TAVILY_API_KEY, query, search_depth: 'basic', max_results: 6 },
         { timeout: 12000 });
       return (r.data.results || []).map(h => `**${h.title}**\n${h.url}\n${h.content}`).join('\n\n');
-    } catch (e) { console.log('[SEARCH] Tavily failed:', e.message); }
+    } catch (e) { handleSearchError('tavily', e); }
   }
-  if (process.env.SERPAPI_KEY) {
+  if (process.env.SERPAPI_KEY && !isOnCooldown('search_serpapi')) {
     try {
       const r = await axios.get('https://serpapi.com/search',
         { params: { q: query, api_key: process.env.SERPAPI_KEY, num: 6, engine: 'google' }, timeout: 10000 });
       return (r.data.organic_results || []).map(h => `**${h.title}**\n${h.link}\n${h.snippet || ''}`).join('\n\n');
-    } catch (e) { console.log('[SEARCH] SerpAPI failed:', e.message); }
+    } catch (e) { handleSearchError('serpapi', e); }
   }
-  if (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX) {
+  if (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX && !isOnCooldown('search_google_cse')) {
     try {
       const r = await axios.get('https://www.googleapis.com/customsearch/v1',
         { params: { key: process.env.GOOGLE_CSE_KEY, cx: process.env.GOOGLE_CSE_CX, q: query, num: 6 }, timeout: 10000 });
       return (r.data.items || []).map(i => `**${i.title}**\n${i.link}\n${i.snippet || ''}`).join('\n\n');
-    } catch (e) { console.log('[SEARCH] Google CSE failed:', e.message); }
+    } catch (e) { handleSearchError('google_cse', e); }
   }
-  // Free fallback: DuckDuckGo instant answers
+  // Free fallback: DuckDuckGo instant answers (no key, no cooldown)
   try {
     const r = await axios.get('https://api.duckduckgo.com/',
       { params: { q: query, format: 'json', no_html: 1, skip_disambig: 1 }, timeout: 8000 });
@@ -1647,6 +1764,78 @@ app.get('/api/update/check', async (req, res) => {
 });
 
 // =============================================================================
+// SUBAGENT DISPATCHER — VoltAgent-compatible subagents via Anthropic/callAI()
+// Replaces the need for @openai/codex CLI — runs all 136+ subagent types natively.
+// When ANTHROPIC_API_KEY is set, Anthropic Claude is preferred automatically.
+// =============================================================================
+const SUBAGENT_DEFINITIONS = {
+  // ── Research & Analysis ────────────────────────────────────────────────────
+  'seo-analyst':           { label: 'SEO Analyst', icon: '🔍', cat: 'Research', desc: 'Technical SEO audits, keyword strategy, search ranking analysis', prompt: 'You are an expert SEO Analyst. You conduct thorough technical SEO audits, keyword research, competitor analysis, and actionable search-ranking strategy. Provide structured reports with specific recommendations, priority rankings, and estimated impact. Always include quick wins vs long-term plays.' },
+  'market-researcher':     { label: 'Market Researcher', icon: '📊', cat: 'Research', desc: 'Market sizing, competitive intelligence, industry trends', prompt: 'You are an expert Market Researcher. You analyse TAM/SAM/SOM, competitive landscapes, industry trends, and customer segments. Deliver structured market intelligence reports with data-backed insights, named competitors, pricing benchmarks, and strategic implications.' },
+  'competitor-analyst':    { label: 'Competitor Analyst', icon: '🕵️', cat: 'Research', desc: 'Deep competitor profiling, SWOT, positioning gaps', prompt: 'You are an expert Competitor Analyst. You profile competitors in depth: products, pricing, positioning, strengths, weaknesses, team, funding, and strategic direction. Identify gaps and opportunities the user can exploit. Be specific with company names, numbers, and sources.' },
+  'technology-scout':      { label: 'Technology Scout', icon: '🔭', cat: 'Research', desc: 'Emerging tech evaluation, build-vs-buy, stack recommendations', prompt: 'You are an expert Technology Scout. You evaluate emerging technologies, frameworks, and tools. Provide concise build-vs-buy analyses, technology readiness assessments, integration complexity ratings, and vendor comparisons. Always flag risks and hidden costs.' },
+  // ── Core Development ───────────────────────────────────────────────────────
+  'api-designer':          { label: 'API Designer', icon: '🔌', cat: 'Development', desc: 'REST/GraphQL API design, OpenAPI specs, versioning strategy', prompt: 'You are an expert API Designer specialising in REST and GraphQL. Design clean, consistent, versioned APIs. Produce OpenAPI/Swagger specs, endpoint naming conventions, authentication strategies, error schemas, and pagination patterns. Flag breaking-change risks.' },
+  'backend-architect':     { label: 'Backend Architect', icon: '🏗️', cat: 'Development', desc: 'System design, scalability, microservices, database selection', prompt: 'You are an expert Backend Architect. Design scalable, resilient backend systems. Cover service decomposition, data modelling, caching strategy, message queues, API gateways, and observability. Draw ASCII architecture diagrams where helpful. Quantify trade-offs.' },
+  'frontend-specialist':   { label: 'Frontend Specialist', icon: '🎨', cat: 'Development', desc: 'React/Vue/Svelte, performance, accessibility, component design', prompt: 'You are an expert Frontend Specialist. Design and review frontend architectures: component hierarchy, state management, bundle optimisation, Core Web Vitals, accessibility (WCAG 2.2), and responsive design. Provide code examples when illustrating patterns.' },
+  'code-reviewer':         { label: 'Code Reviewer', icon: '👁️', cat: 'Quality', desc: 'Thorough code review: bugs, performance, maintainability', prompt: 'You are a thorough Code Reviewer. Review code for correctness, performance, readability, maintainability, and edge cases. Use a structured format: Critical Issues → Warnings → Suggestions → Praise. Include line-level comments where relevant. Never just say "looks good".' },
+  // ── Quality & Security ─────────────────────────────────────────────────────
+  'security-auditor':      { label: 'Security Auditor', icon: '🛡️', cat: 'Security', desc: 'OWASP, auth flows, injection, secrets, dependency CVEs', prompt: 'You are an expert Security Auditor. Review code, APIs, and infrastructure for OWASP Top 10, injection vulnerabilities, broken auth, secrets leakage, IDOR, SSRF, insecure dependencies, and misconfiguration. Rate each finding: Critical/High/Medium/Low with remediation steps. Be specific.' },
+  'penetration-tester':    { label: 'Penetration Tester', icon: '⚔️', cat: 'Security', desc: 'Attack surface mapping, exploit scenarios, red-team thinking', prompt: 'You are an expert Penetration Tester (ethical, defensive context). Map attack surfaces, model threat actors, describe realistic exploit chains, and recommend mitigations. Focus on what a real attacker would prioritise. Output structured pentest reports with CVSS scores.' },
+  'test-engineer':         { label: 'Test Engineer', icon: '🧪', cat: 'Quality', desc: 'Test strategy, unit/integration/E2E, coverage, CI integration', prompt: 'You are an expert Test Engineer. Design comprehensive test strategies: unit, integration, E2E, contract, and load tests. Write specific test cases, mock strategies, coverage targets, and CI pipeline integration. Always consider edge cases, error paths, and concurrency.' },
+  // ── Infrastructure & DevOps ────────────────────────────────────────────────
+  'devops-engineer':       { label: 'DevOps Engineer', icon: '⚙️', cat: 'Infrastructure', desc: 'CI/CD, Docker, K8s, IaC, monitoring, incident response', prompt: 'You are an expert DevOps Engineer. Design and review CI/CD pipelines, containerisation, orchestration (K8s), infrastructure-as-code (Terraform/Pulumi), monitoring stacks, and incident runbooks. Optimise for deployment frequency, MTTR, and change failure rate.' },
+  'terraform-specialist':  { label: 'Terraform Specialist', icon: '🌍', cat: 'Infrastructure', desc: 'Terraform modules, state management, cloud IaC best practices', prompt: 'You are an expert Terraform Specialist. Write production-grade Terraform modules with proper state management, remote backends, workspace strategy, variable validation, and outputs. Follow the Terraform style guide. Flag drift risks and state corruption scenarios.' },
+  'kubernetes-architect':  { label: 'Kubernetes Architect', icon: '☸️', cat: 'Infrastructure', desc: 'K8s cluster design, RBAC, networking, HPA, GitOps', prompt: 'You are an expert Kubernetes Architect. Design K8s deployments: cluster topology, namespace strategy, RBAC, network policies, resource limits, HPA/VPA, GitOps workflows, and disaster recovery. Provide YAML manifests with inline comments explaining each decision.' },
+  // ── Data & AI ──────────────────────────────────────────────────────────────
+  'ml-engineer':           { label: 'ML Engineer', icon: '🤖', cat: 'Data & AI', desc: 'ML pipelines, model selection, training, evaluation, deployment', prompt: 'You are an expert ML Engineer. Design end-to-end ML pipelines: data preprocessing, feature engineering, model selection (with justification), training strategy, evaluation metrics, serving architecture, and monitoring for drift. Always discuss trade-offs between accuracy, latency, and cost.' },
+  'rag-architect':         { label: 'RAG Architect', icon: '📚', cat: 'Data & AI', desc: 'Retrieval-augmented generation, vector DBs, chunking, reranking', prompt: 'You are an expert RAG Architect. Design production-grade retrieval-augmented generation systems: embedding strategy, chunking, vector database selection (Pinecone/Weaviate/pgvector), retrieval (dense/sparse/hybrid), reranking, and context window management. Include evaluation benchmarks.' },
+  // ── Business & Product ─────────────────────────────────────────────────────
+  'product-manager':       { label: 'Product Manager', icon: '📋', cat: 'Business', desc: 'PRDs, user stories, roadmaps, prioritisation frameworks', prompt: 'You are an expert Product Manager. Write clear PRDs, user stories (Jobs-to-be-Done format), acceptance criteria, success metrics, and prioritised roadmaps. Use RICE or ICE scoring. Always tie features to user pain and business outcomes. Flag technical feasibility risks.' },
+  'technical-writer':      { label: 'Technical Writer', icon: '✍️', cat: 'Business', desc: 'API docs, runbooks, architecture decision records, READMEs', prompt: 'You are an expert Technical Writer. Produce clear, well-structured technical documentation: API references, runbooks, ADRs, onboarding guides, and READMEs. Write for the target audience\'s expertise level. Use consistent terminology, active voice, and concrete examples.' },
+  'growth-hacker':         { label: 'Growth Hacker', icon: '📈', cat: 'Business', desc: 'AARRR funnel analysis, acquisition experiments, retention loops', prompt: 'You are an expert Growth Hacker. Analyse AARRR funnels, design acquisition experiments, identify retention loops, and prioritise growth levers. Propose specific, testable hypotheses with expected lift, measurement plan, and minimum sample size. Focus on compounding mechanisms.' },
+  // ── Developer Experience ───────────────────────────────────────────────────
+  'documentation-writer':  { label: 'Documentation Writer', icon: '📝', cat: 'DevEx', desc: 'Generate docs from code, improve clarity, add examples', prompt: 'You are an expert Documentation Writer specialising in developer docs. Generate clear, accurate documentation from code and context. Include: overview, quick-start, API reference with examples, error handling, and FAQ. Use consistent formatting and progressive disclosure.' },
+  'refactoring-specialist':{ label: 'Refactoring Specialist', icon: '🔧', cat: 'DevEx', desc: 'Safe refactoring plans, technical debt reduction, code smell removal', prompt: 'You are an expert Refactoring Specialist. Identify code smells, propose safe refactoring strategies with step-by-step migration plans, estimate effort and risk per step, and preserve existing behaviour. Always suggest tests to add before refactoring.' },
+  // ── Meta & Orchestration ───────────────────────────────────────────────────
+  'workflow-orchestrator': { label: 'Workflow Orchestrator', icon: '🎯', cat: 'Orchestration', desc: 'Break complex tasks into parallel agent workstreams', prompt: 'You are an expert Workflow Orchestrator. Break complex projects into parallel, independent workstreams. For each workstream: define scope, inputs/outputs, dependencies, and the best specialist agent to handle it. Produce a structured execution plan with critical path and risk flags.' },
+  'prompt-engineer':       { label: 'Prompt Engineer', icon: '💬', cat: 'Orchestration', desc: 'Optimise prompts, few-shot examples, chain-of-thought design', prompt: 'You are an expert Prompt Engineer. Optimise prompts for accuracy, consistency, and token efficiency. Apply chain-of-thought, few-shot, and structured output techniques. Identify prompt failure modes, add guardrails, and benchmark variants. Show before/after with reasoning.' },
+};
+
+// POST /api/subagent/run — dispatch any subagent via callAI (Anthropic preferred)
+app.post('/api/subagent/run', async (req, res) => {
+  const { agentType, task, context } = req.body;
+  if (!task) return res.status(400).json({ error: 'task required' });
+
+  const def = SUBAGENT_DEFINITIONS[agentType];
+  if (!def) return res.status(400).json({ error: `Unknown subagent type: ${agentType}. Available: ${Object.keys(SUBAGENT_DEFINITIONS).join(', ')}` });
+
+  // Prefer Anthropic for subagents — highest quality reasoning
+  const preferred = process.env.ANTHROPIC_API_KEY ? 'anthropic::claude-sonnet-4-6' : null;
+  const originalChain1 = process.env.MODEL_CHAIN_1;
+  if (preferred) process.env.MODEL_CHAIN_1 = preferred;
+
+  try {
+    const systemPrompt = `${def.prompt}\n\n${AGENT_ACTION_REFERENCE}\n\nYou may use [[ACTION:web_search|query]], [[ACTION:web_fetch|url]], [[ACTION:obsidian_write|...]], and other actions to gather real data and deliver a thorough, grounded response.`;
+    const messages = [{ role: 'user', content: context ? `Context:\n${context}\n\nTask:\n${task}` : task }];
+    const rawReply = await callAI(messages, systemPrompt);
+    const reply = await executeActions(rawReply, systemPrompt);
+    res.json({ agent: def.label, icon: def.icon, category: def.cat, task, result: reply });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    // Restore original chain
+    if (preferred) process.env.MODEL_CHAIN_1 = originalChain1 || '';
+  }
+});
+
+// GET /api/subagent/list — all available subagent types
+app.get('/api/subagent/list', (req, res) => {
+  const list = Object.entries(SUBAGENT_DEFINITIONS).map(([id, d]) => ({ id, label: d.label, icon: d.icon, category: d.cat, description: d.desc }));
+  res.json({ subagents: list, anthropicReady: !!process.env.ANTHROPIC_API_KEY });
+});
+
+// =============================================================================
 // OPENCLAW AGENT POOL — browse + deploy 187 temporary specialist agents
 // Source: github.com/mergisi/awesome-openclaw-agents
 // =============================================================================
@@ -1781,6 +1970,112 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
 });
 
 // =============================================================================
+// =============================================================================
+// PROACTIVE CEO — autonomous company analysis, business plan, self-improvement
+// =============================================================================
+async function runProactiveCEO() {
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+  if (!vaultPath) return; // Can't save without vault
+
+  console.log('[CEO] Running proactive analysis...');
+  try {
+    // Build context from all available integrations
+    const contextParts = [];
+    contextParts.push(`Company: ${state.company}`);
+    contextParts.push(`Owner: ${state.owner}`);
+    contextParts.push(`Active Agents: ${Object.keys(state.agents).length}`);
+    contextParts.push(`Recent Decisions: ${state.decisions.slice(-5).map(d => `${d.objective} (${d.status})`).join(', ') || 'None yet'}`);
+
+    const ownerProfile = fs.existsSync(path.join(MEMORY_DIR, 'OWNER.md'))
+      ? fs.readFileSync(path.join(MEMORY_DIR, 'OWNER.md'), 'utf8').slice(0, 1000) : '';
+    if (ownerProfile) contextParts.push(`Owner Context:\n${ownerProfile}`);
+
+    const prompt = `You are TommyClaw, autonomous CEO of ${state.company}. You are running your daily strategic sweep.
+
+COMPANY CONTEXT:
+${contextParts.join('\n')}
+
+YOUR MISSION TODAY:
+1. Identify the top 3 weaknesses or blind spots in the business right now
+2. Identify the top 3 opportunities worth pursuing immediately
+3. Set the company's #1 priority for the next 7 days
+4. Assign one specific action to each C-Suite agent (CFO, COO, CTO, CMO, CRO)
+5. Update the master Business Plan in Obsidian
+
+OUTPUT FORMAT: Write a concise, punchy strategic brief. Then write the full business plan update.
+
+End your response with these exact action blocks (fill in the content):
+[[ACTION:obsidian_write|OmniClaw Business Plan|# ${state.company} — Living Business Plan
+
+**Last Updated:** ${new Date().toLocaleDateString()}
+**CEO Directive:** [Your #1 priority for next 7 days]
+
+## Company Mission
+[Write mission]
+
+## Top Opportunities Right Now
+1. [Opportunity 1]
+2. [Opportunity 2]
+3. [Opportunity 3]
+
+## Identified Weaknesses
+1. [Weakness 1]
+2. [Weakness 2]
+3. [Weakness 3]
+
+## Agent Assignments This Week
+- CFO: [specific task]
+- COO: [specific task]
+- CTO: [specific task]
+- CMO: [specific task]
+- CRO: [specific task]
+
+## 90-Day Targets
+[Write targets]
+
+## Self-Healing Actions
+[What the system should auto-fix or monitor]
+]]
+[[ACTION:memory_write|CEO-LAST-SWEEP.md|Date: ${new Date().toISOString()}\nStatus: Complete]]`;
+
+    const reply = await callAI([{ role: 'user', content: prompt }], prompt);
+    await executeActions(reply, prompt);
+    console.log('[CEO] Proactive sweep complete — business plan updated in Obsidian');
+  } catch (e) {
+    console.log('[CEO] Proactive sweep failed:', e.message);
+  }
+}
+
+// Self-healing: check system health and fix common issues
+async function selfHeal() {
+  try {
+    // Reload org chart if agents dropped below expected count
+    const expectedAgents = 11;
+    if (Object.keys(state.agents).length < expectedAgents) {
+      console.log(`[HEAL] Agent count low (${Object.keys(state.agents).length}/${expectedAgents}) — reloading org chart`);
+      loadOrgChart();
+    }
+
+    // Clear rate limit cooldowns older than their TTL (self-cleans automatically via isOnCooldown)
+    const now = Date.now();
+    for (const [provider, until] of Object.entries(providerCooldown)) {
+      if (now > until) delete providerCooldown[provider];
+    }
+
+    // Ensure memory directory exists
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+
+    // Persist decisions to disk if grown
+    if (state.decisions.length > 0) {
+      const decisionsPath = path.join(MEMORY_DIR, 'decisions.json');
+      fs.writeFileSync(decisionsPath, JSON.stringify(state.decisions.slice(-200), null, 2));
+    }
+  } catch (e) {
+    console.log('[HEAL] Self-heal check failed:', e.message);
+  }
+}
+
+// =============================================================================
 // INIT & START
 // =============================================================================
 loadOrgChart();
@@ -1821,6 +2116,15 @@ server.listen(PORT, () => {
 
   // Morning briefing scheduler
   scheduleBriefing();
+
+  // Self-healing: runs every 5 minutes
+  setInterval(selfHeal, 5 * 60 * 1000);
+
+  // Proactive CEO: run once on startup (60s delay to let everything settle)
+  // then daily at 06:00
+  setTimeout(runProactiveCEO, 60000);
+  cron.schedule('0 6 * * *', runProactiveCEO, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
+  console.log('   CEO:       Proactive sweep scheduled daily at 06:00');
 
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
