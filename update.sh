@@ -22,9 +22,12 @@ echo ""
 CURRENT_VERSION="unknown"
 [ -f "$VERSION_FILE" ] && CURRENT_VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
 
-# --- Fetch latest version from GitHub ---
+# --- Fetch latest version from GitHub (via API — bypasses CDN cache) ---
 echo "Checking for updates..."
-LATEST_VERSION=$(curl -sf "https://raw.githubusercontent.com/FELix-Bond/Omniclaw/main/VERSION" | tr -d '[:space:]' 2>/dev/null || echo "")
+LATEST_VERSION=$(curl -sf -H "Cache-Control: no-cache" \
+  "https://api.github.com/repos/FELix-Bond/Omniclaw/contents/VERSION" \
+  | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode().strip())" 2>/dev/null || \
+  curl -sf "https://raw.githubusercontent.com/FELix-Bond/Omniclaw/main/VERSION?$(date +%s)" | tr -d '[:space:]' 2>/dev/null || echo "")
 
 if [ -z "$LATEST_VERSION" ]; then
   echo -e "${RED}Could not reach GitHub. Check your internet connection.${NC}"
