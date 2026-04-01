@@ -1539,26 +1539,33 @@ async function logToNotion(decision) {
 // INTEGRATIONS STATUS endpoint
 // =============================================================================
 app.get('/api/integrations/status', (req, res) => {
+  // Accept both SUPABASE_KEY (written by configure.html) and SUPABASE_ANON_KEY
+  const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+  // GitHub: accept GITHUB_TOKEN or fall back to gh CLI token
+  let githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    try { githubToken = require('child_process').execSync('gh auth token 2>/dev/null', { encoding: 'utf8' }).trim(); } catch(_) {}
+  }
   res.json({
-    telegram:   !!process.env.TG_TOKEN,
-    discord:    !!process.env.DISCORD_TOKEN,
-    slack:      !!process.env.SLACK_BOT_TOKEN,
-    gmail:      !!(process.env.GMAIL_ADDRESS && process.env.GMAIL_APP_PASSWORD),
-    google_suite: !!(process.env.GOOGLE_CLIENT_ID && fs.existsSync(GOOGLE_TOKEN_PATH)),
+    telegram:          !!process.env.TG_TOKEN,
+    discord:           !!process.env.DISCORD_TOKEN,
+    slack:             !!process.env.SLACK_BOT_TOKEN,
+    gmail:             !!(process.env.GMAIL_ADDRESS && process.env.GMAIL_APP_PASSWORD),
+    // Google Suite: keys configured = oauth_ready. Token file = fully authed (Docs/Sheets/Calendar active)
     google_oauth_ready: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    notion:     !!process.env.NOTION_TOKEN,
-    hubspot:    !!process.env.HUBSPOT_API_KEY,
-    stripe:     !!process.env.STRIPE_API_KEY,
-    firecrawl:  !!process.env.FIRECRAWL_API_KEY,
-    perplexity: !!process.env.PERPLEXITY_API_KEY,
-    brave_search: !!process.env.BRAVE_API_KEY,
-    tavily:     !!process.env.TAVILY_API_KEY,
-    serpapi:    !!process.env.SERPAPI_KEY,
-    google_cse: !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
-    github:     !!(process.env.GITHUB_TOKEN && process.env.GITHUB_REPO),
-    supabase:   !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY),
-    elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-    supabase:   !!process.env.SUPABASE_URL,
+    google_suite:      !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && fs.existsSync(GOOGLE_TOKEN_PATH)),
+    notion:            !!process.env.NOTION_TOKEN,
+    hubspot:           !!process.env.HUBSPOT_API_KEY,
+    stripe:            !!process.env.STRIPE_API_KEY,
+    firecrawl:         !!process.env.FIRECRAWL_API_KEY,
+    perplexity:        !!process.env.PERPLEXITY_API_KEY,
+    brave_search:      !!process.env.BRAVE_API_KEY,
+    tavily:            !!process.env.TAVILY_API_KEY,
+    serpapi:           !!process.env.SERPAPI_KEY,
+    google_cse:        !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
+    github:            !!(githubToken && process.env.GITHUB_REPO),
+    supabase:          !!(process.env.SUPABASE_URL && supabaseKey),
+    elevenlabs:        !!process.env.ELEVENLABS_API_KEY,
   });
 });
 

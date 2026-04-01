@@ -1291,25 +1291,64 @@ async function loadIntegrations() {
   try {
     const r = await fetch('/api/integrations/status');
     const d = await r.json();
+
+    // Each entry: [key, label, partialKey|null]
+    // partialKey = another status key that means "configured but not fully authed"
     const groups = {
-      '💬 Communication': { telegram:'Telegram Bot',discord:'Discord',slack:'Slack' },
-      '📧 Email & Google': { gmail:'Gmail (send)',google_oauth_ready:'Google OAuth (ready)',google_suite:'Google Suite (authenticated)' },
-      '🗂️ Productivity': { notion:'Notion',hubspot:'HubSpot CRM' },
-      '💰 Finance': { stripe:'Stripe' },
-      '🔍 Web Search': { brave_search:'Brave Search',perplexity:'Perplexity AI',tavily:'Tavily (AI search)',serpapi:'SerpAPI (Google)',google_cse:'Google Custom Search' },
-      '🌐 Web Fetch': { firecrawl:'Firecrawl' },
-      '🗄️ Data': { supabase:'Supabase',github:'GitHub' },
-      '🔊 Media': { elevenlabs:'ElevenLabs (voice)' },
+      '💬 Communication': [
+        ['telegram',    'Telegram Bot',           null],
+        ['discord',     'Discord',                null],
+        ['slack',       'Slack',                  null],
+      ],
+      '📧 Email & Google': [
+        ['gmail',             'Gmail (send)',                      null],
+        ['google_oauth_ready','Google Auth',                       null],
+        ['google_suite',      'Google Suite (Docs/Sheets/Calendar)','google_oauth_ready'],
+      ],
+      '🗂️ Productivity': [
+        ['notion',   'Notion',       null],
+        ['hubspot',  'HubSpot CRM',  null],
+      ],
+      '💰 Finance': [
+        ['stripe', 'Stripe', null],
+      ],
+      '🔍 Web Search': [
+        ['brave_search', 'Brave Search',          null],
+        ['perplexity',   'Perplexity AI',          null],
+        ['tavily',       'Tavily',                 null],
+        ['serpapi',      'SerpAPI (Google)',        null],
+        ['google_cse',   'Google Custom Search',   null],
+      ],
+      '🌐 Web Fetch': [
+        ['firecrawl', 'Firecrawl', null],
+      ],
+      '🗄️ Data': [
+        ['supabase', 'Supabase', null],
+        ['github',   'GitHub',   null],
+      ],
+      '🔊 Media': [
+        ['elevenlabs', 'ElevenLabs (voice)', null],
+      ],
     };
+
+    function statusBadge(key, partialKey) {
+      if (d[key]) {
+        return `<span style="font-size:0.75rem;padding:2px 8px;border-radius:20px;background:#1a3a1a;color:#6bcb77;border:1px solid #2d6a2d">✓ Connected</span>`;
+      } else if (partialKey && d[partialKey]) {
+        return `<span style="font-size:0.75rem;padding:2px 8px;border-radius:20px;background:rgba(240,180,41,0.1);color:var(--yellow);border:1px solid rgba(240,180,41,0.3)">⚡ Keys set — needs auth</span>`;
+      } else {
+        return `<span style="font-size:0.75rem;padding:2px 8px;border-radius:20px;background:#1e1a2a;color:var(--muted);border:1px solid #2a2f3d">— Not configured</span>`;
+      }
+    }
+
     const grid = document.getElementById('integrationsGrid');
-    grid.innerHTML = Object.entries(groups).map(([groupLabel, keys]) => {
-      const rows = Object.entries(keys).map(([k,label]) => {
-        const on = d[k];
-        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+    grid.innerHTML = Object.entries(groups).map(([groupLabel, items]) => {
+      const rows = items.map(([k, label, partialKey]) =>
+        `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
           <span style="font-size:0.83rem">${label}</span>
-          <span style="font-size:0.75rem;padding:2px 8px;border-radius:20px;background:${on?'#1a3a1a':'#2a1a1a'};color:${on?'#6bcb77':'#e07070'};border:1px solid ${on?'#2d6a2d':'#5a2a2a'}">${on?'✓ Connected':'✗ Not set'}</span>
-        </div>`;
-      }).join('');
+          ${statusBadge(k, partialKey)}
+        </div>`
+      ).join('');
       return `<div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin:10px 0 4px">${groupLabel}</div>${rows}`;
     }).join('');
   } catch(e) {
