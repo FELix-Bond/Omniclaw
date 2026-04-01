@@ -178,8 +178,11 @@
     <div class="nav-item" onclick="showPanel('skills')"><span class="nav-icon">🛠️</span> Skills</div>
     <div class="nav-item" onclick="showPanel('integrations')"><span class="nav-icon">🔌</span> Integrations</div>
     <div class="nav-item" onclick="showPanel('agentpool')"><span class="nav-icon">🤖</span> Agent Pool</div>
-    <a class="nav-link" href="https://openclaw.ai" target="_blank"><span class="nav-icon">🦾</span> OpenClaw ↗</a>
+    <div class="nav-item" onclick="showPanel('agentchat')"><span class="nav-icon">🗣️</span> Agent Chat</div>
+    <div class="nav-item" onclick="showPanel('openclaw')"><span class="nav-icon">🦾</span> OpenClaw</div>
+    <div class="nav-item" onclick="showPanel('browser')"><span class="nav-icon">🌐</span> Browser</div>
     <a class="nav-link" href="https://github.com/FELix-Bond/Omniclaw" target="_blank"><span class="nav-icon">🔗</span> GitHub ↗</a>
+    <div class="nav-item" onclick="showPanel('settings')"><span class="nav-icon">⚙️</span> Settings</div>
   </nav>
   <div class="sidebar-footer">
     <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)">
@@ -338,18 +341,29 @@
 
     <!-- MEMORY PANEL -->
     <div class="panel" id="panel-memory">
-      <div class="section-title">Agent Memory Files</div>
-      <div class="card">
-        <div class="section-title">SOUL.md</div>
-        <pre class="profile-md" id="soulMd">Loading...</pre>
-      </div>
-      <div class="card">
-        <div class="section-title">HEARTBEATS.md (last 20 lines)</div>
-        <pre class="profile-md" id="heartbeatsMd">Loading...</pre>
+      <div style="max-width:900px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">Agent Memory</h3>
+          <button class="btn-sm" onclick="loadMemory()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Refresh</button>
+        </div>
+        <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;min-height:500px">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <div style="padding:10px 14px;font-size:0.75rem;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border)">FILES</div>
+            <div id="memFileList" style="overflow-y:auto;max-height:520px"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="memEditingLabel" style="font-size:0.85rem;font-weight:600;color:var(--accent)">Select a file →</span>
+              <button id="memSaveBtn" onclick="saveMemoryFile()" style="display:none;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:0.82rem;font-weight:600">Save</button>
+              <button id="memNewBtn" onclick="newMemoryFile()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">+ New file</button>
+            </div>
+            <textarea id="memEditor" placeholder="Select a file from the list to edit..." style="flex:1;min-height:480px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:0.82rem;resize:vertical;outline:none"></textarea>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- CHAT PANEL -->
+    <!-- CHAT PANEL (CEO) -->
     <div class="panel" id="panel-chat">
       <div class="chat-wrap">
         <div class="chat-messages" id="chatMessages">
@@ -363,6 +377,127 @@
           <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
         </div>
       </div>
+    </div>
+
+    <!-- AGENT CHAT PANEL — direct chat with any C-Suite member -->
+    <div class="panel" id="panel-agentchat">
+      <div style="max-width:860px;height:calc(100vh - 120px);display:flex;flex-direction:column">
+        <h3 style="margin:0 0 12px">Agent Chat</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="agentChatTabs">
+          <!-- populated by JS -->
+        </div>
+        <div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow-y:auto;padding:16px;font-size:0.88rem;line-height:1.6" id="agentChatMessages">
+          <div style="color:var(--muted);text-align:center;margin-top:40px">Select an agent above to start chatting</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input type="text" id="agentChatInput" placeholder="Message your agent..." onkeydown="if(event.key==='Enter')sendAgentChat()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:0.88rem;outline:none">
+          <button onclick="sendAgentChat()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-weight:600">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPENCLAW PANEL -->
+    <div class="panel" id="panel-openclaw">
+      <div style="max-width:860px">
+        <h3 style="margin:0 0 4px">🦾 OpenClaw — The Backbone</h3>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 24px">OpenClaw is the execution layer. Every agent, skill, action, and integration runs through it. Paperclip (this dashboard) sits on top as the director — it orchestrates, visualises, and routes work to OpenClaw agents.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+            <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">🏗️ Architecture</div>
+            <div style="font-size:0.82rem;color:var(--muted);line-height:1.7">
+              <strong style="color:var(--text)">Paperclip Dashboard</strong> — You are here. Director layer.<br>
+              ↓<br>
+              <strong style="color:var(--text)">OpenClaw Engine</strong> — Action execution, agent routing<br>
+              ↓<br>
+              <strong style="color:var(--text)">C-Suite Agents</strong> — 11 executive AI agents<br>
+              ↓<br>
+              <strong style="color:var(--text)">Agent Pool</strong> — 187 specialist temp workers<br>
+              ↓<br>
+              <strong style="color:var(--text)">Integrations</strong> — Gmail, Slack, Google, Notion, etc.<br>
+              ↓<br>
+              <strong style="color:var(--text)">NemoClaw Shell</strong> — Direct system execution
+            </div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+            <div style="font-weight:700;margin-bottom:8px;color:var(--accent)">⚡ Live Status</div>
+            <div id="oclawStatus" style="font-size:0.82rem;line-height:1.9">
+              <div>Loading...</div>
+            </div>
+          </div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;margin-bottom:10px">🤖 VoltAgent Codex Subagents (136+)</div>
+          <p style="font-size:0.82rem;color:var(--muted);margin:0 0 10px">Specialist AI subagents installed to <code>~/.codex/agents/</code>. Invoked by the CTO via explicit delegation. 10 categories including Core Dev, Language Specialists, Infrastructure, Security, Data/AI, and more.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${['Core Dev','Language Specialists','Infrastructure','Security & QA','Data & AI','Dev Experience','Domains','Business','Meta/Orchestration','Research'].map(c => `<span style="font-size:0.72rem;padding:2px 8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--accent)">${c}</span>`).join('')}
+          </div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px">
+          <div style="font-weight:700;margin-bottom:10px">👥 OpenClaw Agent Pool (187 specialists)</div>
+          <p style="font-size:0.82rem;color:var(--muted);margin:0 0 10px">Production-ready SOUL.md templates across 22 categories. Deployed on-demand, run as focused workers, undeployed when done. Every exec has priority categories pre-assigned.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${['productivity','business','automation','finance','marketing','creative','development','devops','security','data','saas','hr','legal','education','ecommerce','compliance','customer-success','voice','personal','freelance','real-estate','supply-chain'].map(c => `<span style="font-size:0.72rem;padding:2px 8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--muted)">${c}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BROWSER PANEL -->
+    <div class="panel" id="panel-browser">
+      <div style="max-width:900px">
+        <h3 style="margin:0 0 12px">🌐 Browser</h3>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input type="text" id="browserUrl" placeholder="Enter URL or search query..." value="https://google.com" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-size:0.88rem;outline:none" onkeydown="if(event.key==='Enter')loadBrowser()">
+          <button onclick="loadBrowser()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-weight:600">Go</button>
+          <button onclick="fetchPageText()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:0.82rem">Fetch text</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button onclick="quickNav('https://google.com')" class="btn-sm btn-ghost">Google</button>
+          <button onclick="quickNav('https://news.ycombinator.com')" class="btn-sm btn-ghost">HN</button>
+          <button onclick="quickNav('https://linkedin.com')" class="btn-sm btn-ghost">LinkedIn</button>
+          <button onclick="quickNav('https://github.com/FELix-Bond/Omniclaw')" class="btn-sm btn-ghost">Repo</button>
+          <button onclick="quickNav('https://app.supabase.com')" class="btn-sm btn-ghost">Supabase</button>
+          <button onclick="quickNav('https://dashboard.stripe.com')" class="btn-sm btn-ghost">Stripe</button>
+          <button onclick="quickNav('https://app.hubspot.com')" class="btn-sm btn-ghost">HubSpot</button>
+        </div>
+        <iframe id="browserFrame" src="https://google.com" style="width:100%;height:calc(100vh - 260px);border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
+        <div id="browserTextResult" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:0.82rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;color:var(--text)"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div class="panel" id="panel-settings">
+      <div style="max-width:700px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">⚙️ Settings</h3>
+          <button class="btn-sm" onclick="loadSettings()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Refresh</button>
+        </div>
+        <p style="color:var(--muted);font-size:0.82rem;margin:0 0 20px">Edit any setting. Changes are written to your <code>.env</code> file immediately. Restart the dashboard for changes to take full effect.</p>
+        <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="filterSettings('')" id="sf-all" class="btn-sm btn-ghost" style="border-color:var(--accent);color:var(--accent)">All</button>
+          <button onclick="filterSettings('AI_')" id="sf-ai" class="btn-sm btn-ghost">AI / Models</button>
+          <button onclick="filterSettings('GMAIL')" id="sf-email" class="btn-sm btn-ghost">Email</button>
+          <button onclick="filterSettings('GOOGLE')" id="sf-google" class="btn-sm btn-ghost">Google</button>
+          <button onclick="filterSettings('SLACK')" id="sf-slack" class="btn-sm btn-ghost">Slack</button>
+          <button onclick="filterSettings('STRIPE')" id="sf-stripe" class="btn-sm btn-ghost">Stripe</button>
+          <button onclick="filterSettings('SUPABASE')" id="sf-db" class="btn-sm btn-ghost">Database</button>
+          <button onclick="filterSettings('GITHUB')" id="sf-gh" class="btn-sm btn-ghost">GitHub</button>
+        </div>
+        <div id="settingsGrid" style="display:grid;gap:10px">
+          <div style="color:var(--muted)">Loading settings...</div>
+        </div>
+        <div style="margin-top:20px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+          <div style="font-weight:600;margin-bottom:8px;font-size:0.85rem">Add new key</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="newSettingKey" placeholder="KEY_NAME" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.82rem;font-family:monospace;outline:none">
+            <input type="text" id="newSettingVal" placeholder="value" style="flex:2;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.82rem;outline:none">
+            <button onclick="addNewSetting()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:0.82rem">Add</button>
+          </div>
+        </div>
+        <div id="settingsSaveStatus" style="margin-top:10px;font-size:0.82rem;color:var(--green)"></div>
+      </div>
+    </div>
+
     <!-- SKILLS PANEL -->
     <div class="panel" id="panel-skills">
       <div style="max-width:800px">
@@ -460,7 +595,7 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + id)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
-  const titles = { dashboard: 'Dashboard', agents: 'C-Suite Agents', decisions: 'Decision Engine', orgchart: 'Org Chart', github: 'GitHub Integration', heartbeat: 'Heartbeat Monitor', memory: 'Agent Memory', chat: 'Chat with CEO AI', skills: 'Skill Pool', integrations: 'Integrations', agentpool: 'Agent Pool — 187 Specialists' };
+  const titles = { dashboard:'Dashboard', agents:'C-Suite Agents', decisions:'Decision Engine', orgchart:'Org Chart', github:'GitHub Integration', heartbeat:'Heartbeat Monitor', memory:'Agent Memory', chat:'Chat with CEO AI', skills:'Skill Pool', integrations:'Integrations', agentpool:'Agent Pool — 187 Specialists', agentchat:'Agent Chat', openclaw:'OpenClaw Engine', browser:'Browser', settings:'Settings' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
   if (id === 'memory') loadMemory();
   if (id === 'github') refreshGithub();
@@ -468,6 +603,9 @@ function showPanel(id) {
   if (id === 'integrations') loadIntegrations();
   if (id === 'skills') loadSkills();
   if (id === 'agentpool') loadAgentPool();
+  if (id === 'agentchat') initAgentChatTabs();
+  if (id === 'openclaw') loadOpenclawStatus();
+  if (id === 'settings') loadSettings();
 }
 
 // =============================================================================
@@ -596,21 +734,261 @@ async function githubPush() {
 }
 
 // =============================================================================
-// MEMORY
+// MEMORY — file browser + editor
 // =============================================================================
+let currentMemFile = null;
+
 async function loadMemory() {
   try {
-    const [soul, hb] = await Promise.all([
-      fetch('/api/memory/SOUL.md').then(r => r.json()),
-      fetch('/api/memory/HEARTBEATS.md').then(r => r.json()),
-    ]);
-    document.getElementById('soulMd').textContent = soul.content || 'Empty';
-    const lines = (hb.content || '').split('\n').filter(Boolean);
-    document.getElementById('heartbeatsMd').textContent = lines.slice(-20).join('\n') || 'No heartbeats yet';
-  } catch(e) {
-    document.getElementById('soulMd').textContent = 'File not found — run setup.sh to initialise.';
-    document.getElementById('heartbeatsMd').textContent = 'File not found.';
+    const r = await fetch('/api/memory/list');
+    const files = await r.json();
+    const list = document.getElementById('memFileList');
+    if (!files.length) { list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:0.82rem">No files yet</div>'; return; }
+    list.innerHTML = files.map(f => `
+      <div onclick="openMemFile('${f.name}')" id="mf-${f.name.replace(/[^a-z0-9]/gi,'-')}" style="padding:8px 14px;cursor:pointer;font-size:0.82rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;transition:background 0.1s" onmouseover="this.style.background='rgba(91,141,238,0.08)'" onmouseout="this.style.background=''">
+        <span style="color:var(--text)">${f.name}</span>
+        <span style="color:var(--muted);font-size:0.7rem">${(f.size/1024).toFixed(1)}k</span>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function openMemFile(name) {
+  currentMemFile = name;
+  document.getElementById('memEditingLabel').textContent = name;
+  document.getElementById('memSaveBtn').style.display = 'inline-block';
+  // Highlight selected
+  document.querySelectorAll('[id^="mf-"]').forEach(el => el.style.background = '');
+  const el = document.getElementById(`mf-${name.replace(/[^a-z0-9]/gi,'-')}`);
+  if (el) el.style.background = 'rgba(91,141,238,0.15)';
+  try {
+    const r = await fetch(`/api/memory/${encodeURIComponent(name)}`);
+    const d = await r.json();
+    document.getElementById('memEditor').value = d.content || '';
+  } catch(e) { document.getElementById('memEditor').value = `Error loading ${name}: ${e.message}`; }
+}
+
+async function saveMemoryFile() {
+  if (!currentMemFile) return;
+  const content = document.getElementById('memEditor').value;
+  try {
+    const r = await fetch(`/api/memory/${encodeURIComponent(currentMemFile)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    const d = await r.json();
+    const btn = document.getElementById('memSaveBtn');
+    btn.textContent = '✓ Saved'; btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'Save'; btn.style.background = 'var(--accent)'; }, 2000);
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+function newMemoryFile() {
+  const name = prompt('New file name (e.g. NOTES.md):');
+  if (!name) return;
+  currentMemFile = name;
+  document.getElementById('memEditingLabel').textContent = name;
+  document.getElementById('memSaveBtn').style.display = 'inline-block';
+  document.getElementById('memEditor').value = '';
+  document.getElementById('memEditor').focus();
+}
+
+// =============================================================================
+// AGENT CHAT — direct per-agent chat
+// =============================================================================
+const AGENT_INFO = {
+  CEO:  { emoji:'🦾', name:'TommyClaw (CEO)',  color:'#5b8dee' },
+  CFO:  { emoji:'💰', name:'Ledger (CFO)',      color:'#6bcb77' },
+  COO:  { emoji:'⚙️', name:'Ops (COO)',         color:'#f4a261' },
+  CTO:  { emoji:'🔧', name:'Forge (CTO)',       color:'#e07070' },
+  CSO:  { emoji:'♟️', name:'Sigma (CSO)',       color:'#c084fc' },
+  CMO:  { emoji:'📣', name:'Echo (CMO)',        color:'#fb923c' },
+  CRO:  { emoji:'🛡️', name:'Shield (CRO)',     color:'#f87171' },
+  CIO:  { emoji:'📊', name:'Atlas (CIO)',       color:'#38bdf8' },
+  CPO:  { emoji:'🚀', name:'Nexus (CPO)',       color:'#a3e635' },
+  CHRO: { emoji:'🧬', name:'Bloom (CHRO)',      color:'#f472b6' },
+  CLO:  { emoji:'⚖️', name:'Lex (CLO)',         color:'#94a3b8' },
+};
+let activeAgentChat = 'CEO';
+let agentChatHistories = {};
+
+function initAgentChatTabs() {
+  const tabs = document.getElementById('agentChatTabs');
+  tabs.innerHTML = Object.entries(AGENT_INFO).map(([id, a]) =>
+    `<button id="actab-${id}" onclick="switchAgentChat('${id}')" style="padding:5px 12px;border:1px solid var(--border);border-radius:20px;background:var(--surface2);color:var(--muted);cursor:pointer;font-size:0.78rem;transition:all 0.15s">${a.emoji} ${id}</button>`
+  ).join('');
+  switchAgentChat('CEO');
+}
+
+function switchAgentChat(agentId) {
+  activeAgentChat = agentId;
+  document.querySelectorAll('[id^="actab-"]').forEach(b => { b.style.background = 'var(--surface2)'; b.style.color = 'var(--muted)'; b.style.borderColor = 'var(--border)'; });
+  const tab = document.getElementById(`actab-${agentId}`);
+  const info = AGENT_INFO[agentId];
+  if (tab && info) { tab.style.background = info.color + '22'; tab.style.color = info.color; tab.style.borderColor = info.color + '55'; }
+  renderAgentChatMessages(agentId);
+  document.getElementById('agentChatInput').placeholder = `Message ${info?.name || agentId}...`;
+}
+
+function renderAgentChatMessages(agentId) {
+  const msgs = agentChatHistories[agentId] || [];
+  const box = document.getElementById('agentChatMessages');
+  if (!msgs.length) {
+    const info = AGENT_INFO[agentId];
+    box.innerHTML = `<div style="text-align:center;color:var(--muted);margin-top:60px">${info?.emoji||'🤖'} <strong style="color:var(--text)">${info?.name||agentId}</strong><br><span style="font-size:0.82rem">Send a message to start a conversation</span></div>`;
+    return;
   }
+  box.innerHTML = msgs.map(m => `
+    <div style="margin-bottom:14px;display:flex;${m.role==='user'?'justify-content:flex-end':''}">
+      <div style="max-width:80%;padding:10px 14px;border-radius:${m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px'};background:${m.role==='user'?'var(--accent)':'var(--surface2)'};color:${m.role==='user'?'#fff':'var(--text)'};font-size:0.85rem;line-height:1.5;border:1px solid ${m.role==='user'?'transparent':'var(--border)'};white-space:pre-wrap">${m.content}</div>
+    </div>`).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendAgentChat() {
+  const input = document.getElementById('agentChatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  if (!agentChatHistories[activeAgentChat]) agentChatHistories[activeAgentChat] = [];
+  agentChatHistories[activeAgentChat].push({ role: 'user', content: msg });
+  renderAgentChatMessages(activeAgentChat);
+  // Show typing indicator
+  const box = document.getElementById('agentChatMessages');
+  const typingId = 'typing-' + Date.now();
+  box.innerHTML += `<div id="${typingId}" style="color:var(--muted);font-size:0.82rem;padding:4px 0">Thinking...</div>`;
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, agentId: activeAgentChat, source: 'agentchat' }),
+    });
+    const d = await r.json();
+    document.getElementById(typingId)?.remove();
+    agentChatHistories[activeAgentChat].push({ role: 'assistant', content: d.content || d.error || '(no response)' });
+    renderAgentChatMessages(activeAgentChat);
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    agentChatHistories[activeAgentChat].push({ role: 'assistant', content: 'Error: ' + e.message });
+    renderAgentChatMessages(activeAgentChat);
+  }
+}
+
+// =============================================================================
+// BROWSER PANEL
+// =============================================================================
+function loadBrowser() {
+  const url = document.getElementById('browserUrl').value.trim();
+  if (!url) return;
+  const full = url.startsWith('http') ? url : 'https://' + url;
+  document.getElementById('browserFrame').src = full;
+  document.getElementById('browserTextResult').style.display = 'none';
+}
+
+function quickNav(url) {
+  document.getElementById('browserUrl').value = url;
+  document.getElementById('browserFrame').src = url;
+  document.getElementById('browserTextResult').style.display = 'none';
+}
+
+async function fetchPageText() {
+  const url = document.getElementById('browserUrl').value.trim();
+  if (!url) return;
+  const full = url.startsWith('http') ? url : 'https://' + url;
+  const resultEl = document.getElementById('browserTextResult');
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Fetching clean text via Jina AI reader...';
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `[[ACTION:web_fetch|${full}]]`, source: 'browser' }),
+    });
+    const d = await r.json();
+    resultEl.textContent = d.content || 'No content returned';
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// =============================================================================
+// SETTINGS
+// =============================================================================
+let allSettings = [];
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json();
+    allSettings = (d.settings || []).filter(s => s.type === 'env');
+    renderSettings(allSettings);
+  } catch(e) { document.getElementById('settingsGrid').innerHTML = `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
+}
+
+function filterSettings(prefix) {
+  document.querySelectorAll('[id^="sf-"]').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--muted)'; });
+  const filtered = prefix ? allSettings.filter(s => s.key.includes(prefix)) : allSettings;
+  renderSettings(filtered);
+}
+
+function renderSettings(settings) {
+  const grid = document.getElementById('settingsGrid');
+  if (!settings.length) { grid.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">No settings match.</div>'; return; }
+  grid.innerHTML = settings.map(s => {
+    const isSecret = /KEY|TOKEN|SECRET|PASSWORD|PASS/i.test(s.key);
+    const inputType = isSecret ? 'password' : 'text';
+    return `<div style="display:grid;grid-template-columns:260px 1fr auto;gap:8px;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+      <code style="font-size:0.78rem;color:var(--accent)">${s.key}</code>
+      <input type="${inputType}" value="${s.value.replace(/"/g,'&quot;')}" id="sv-${s.key}" style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;outline:none;font-family:monospace" onkeydown="if(event.key==='Enter')saveSetting('${s.key}')">
+      <button onclick="saveSetting('${s.key}')" style="background:var(--accent);color:#fff;border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:0.75rem;white-space:nowrap">Save</button>
+    </div>`;
+  }).join('');
+}
+
+async function saveSetting(key) {
+  const el = document.getElementById(`sv-${key}`);
+  if (!el) return;
+  const value = el.value;
+  try {
+    const r = await fetch('/api/settings/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    });
+    const d = await r.json();
+    const status = document.getElementById('settingsSaveStatus');
+    status.textContent = d.success ? `✓ ${key} saved` : `Error: ${d.error}`;
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function addNewSetting() {
+  const key = document.getElementById('newSettingKey').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_');
+  const value = document.getElementById('newSettingVal').value;
+  if (!key) return;
+  await saveSetting_kv(key, value);
+  document.getElementById('newSettingKey').value = '';
+  document.getElementById('newSettingVal').value = '';
+  loadSettings();
+}
+
+async function saveSetting_kv(key, value) {
+  return fetch('/api/settings/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });
+}
+
+// OpenClaw panel status
+async function loadOpenclawStatus() {
+  try {
+    const [integr, agents] = await Promise.all([
+      fetch('/api/integrations/status').then(r => r.json()),
+      fetch('/api/agents').then(r => r.json()),
+    ]);
+    const connected = Object.values(integr).filter(Boolean).length;
+    const total = Object.keys(integr).length;
+    const el = document.getElementById('oclawStatus');
+    if (el) el.innerHTML = `
+      <div>🤖 C-Suite Agents: <strong style="color:var(--green)">${agents.length} active</strong></div>
+      <div>🔌 Integrations: <strong style="color:var(--green)">${connected}/${total} connected</strong></div>
+      <div>👥 Agent Pool: <strong style="color:var(--accent)">187 specialists ready</strong></div>
+      <div>🖥️ NemoClaw Shell: <strong style="color:var(--green)">Active</strong></div>
+      <div>🔍 Web Search: <strong style="color:${integr.brave_search||integr.perplexity||integr.tavily||integr.serpapi?'var(--green)':'var(--muted)'}">${integr.brave_search||integr.perplexity||integr.tavily||integr.serpapi?'Configured':'DuckDuckGo fallback'}</strong></div>
+      <div>🌐 Web Fetch: <strong style="color:var(--green)">Jina AI (free, active)</strong></div>`;
+  } catch(e) {}
 }
 
 // =============================================================================
@@ -744,19 +1122,26 @@ async function loadIntegrations() {
   try {
     const r = await fetch('/api/integrations/status');
     const d = await r.json();
-    const labels = {
-      telegram:'Telegram',discord:'Discord',slack:'Slack',gmail:'Gmail (send)',
-      google_suite:'Google Suite (Drive/Docs/Sheets/Calendar)',google_oauth_ready:'Google OAuth ready',
-      notion:'Notion',hubspot:'HubSpot CRM',stripe:'Stripe',
-      firecrawl:'Firecrawl',perplexity:'Perplexity',elevenlabs:'ElevenLabs',supabase:'Supabase',
+    const groups = {
+      '💬 Communication': { telegram:'Telegram Bot',discord:'Discord',slack:'Slack' },
+      '📧 Email & Google': { gmail:'Gmail (send)',google_oauth_ready:'Google OAuth (ready)',google_suite:'Google Suite (authenticated)' },
+      '🗂️ Productivity': { notion:'Notion',hubspot:'HubSpot CRM' },
+      '💰 Finance': { stripe:'Stripe' },
+      '🔍 Web Search': { brave_search:'Brave Search',perplexity:'Perplexity AI',tavily:'Tavily (AI search)',serpapi:'SerpAPI (Google)',google_cse:'Google Custom Search' },
+      '🌐 Web Fetch': { firecrawl:'Firecrawl' },
+      '🗄️ Data': { supabase:'Supabase',github:'GitHub' },
+      '🔊 Media': { elevenlabs:'ElevenLabs (voice)' },
     };
     const grid = document.getElementById('integrationsGrid');
-    grid.innerHTML = Object.entries(labels).map(([k,label]) => {
-      const on = d[k];
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-        <span style="font-size:0.85rem">${label}</span>
-        <span style="font-size:0.78rem;padding:3px 10px;border-radius:20px;background:${on?'#1a3a1a':'#2a1a1a'};color:${on?'#6bcb77':'#e07070'};border:1px solid ${on?'#2d6a2d':'#5a2a2a'}">${on?'✓ Connected':'✗ Not configured'}</span>
-      </div>`;
+    grid.innerHTML = Object.entries(groups).map(([groupLabel, keys]) => {
+      const rows = Object.entries(keys).map(([k,label]) => {
+        const on = d[k];
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+          <span style="font-size:0.83rem">${label}</span>
+          <span style="font-size:0.75rem;padding:2px 8px;border-radius:20px;background:${on?'#1a3a1a':'#2a1a1a'};color:${on?'#6bcb77':'#e07070'};border:1px solid ${on?'#2d6a2d':'#5a2a2a'}">${on?'✓ Connected':'✗ Not set'}</span>
+        </div>`;
+      }).join('');
+      return `<div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin:10px 0 4px">${groupLabel}</div>${rows}`;
     }).join('');
   } catch(e) {
     document.getElementById('integrationsGrid').innerHTML = '<div style="color:var(--muted)">Could not load integration status.</div>';
@@ -776,17 +1161,30 @@ async function sendBriefingNow() {
 // Skills panel
 async function loadSkills() {
   try {
-    const r = await fetch('/api/org-chart');
+    const r = await fetch('/api/skills');
     const d = await r.json();
-    const pool = d.skill_pool || [];
+    const skills = d.skills || [];
     const grid = document.getElementById('skillsGrid');
-    if (!pool.length) { grid.innerHTML = '<div style="color:var(--muted)">Skills loaded from configs/org-chart.json</div>'; return; }
-    grid.innerHTML = pool.map(s => `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-        <div><div style="font-size:0.85rem;font-weight:500;color:var(--text)">${s.name}</div><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">${s.desc}</div></div>
-        <span style="font-size:0.72rem;color:var(--accent);background:var(--surface);padding:2px 8px;border-radius:10px;border:1px solid var(--border);white-space:nowrap;margin-left:12px">All agents</span>
+    if (!skills.length) { grid.innerHTML = '<div style="color:var(--muted)">No skills found.</div>'; return; }
+    // Group by category
+    const byCat = {};
+    skills.forEach(s => { (byCat[s.category] = byCat[s.category] || []).push(s); });
+    const catIcons = { superpowers:'⚡', opencli_api:'📡', opencli_browser:'🌐', opencli_desktop:'🖥️', apis:'🔌', codex_subagents:'🤖', openclaw_agents:'👥' };
+    grid.innerHTML = Object.entries(byCat).map(([cat, items]) => `
+      <div style="margin-bottom:16px">
+        <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:6px">${catIcons[cat]||''} ${cat.toUpperCase().replace(/_/g,' ')} (${items.length})</div>
+        <div style="display:grid;gap:6px">
+          ${items.map(s => `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+              <div>
+                <div style="font-size:0.83rem;font-weight:500;color:var(--text)">${s.name||s.id}</div>
+                ${s.desc ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${s.desc}</div>` : ''}
+              </div>
+              <span style="font-size:0.7rem;color:var(--accent);background:var(--surface);padding:2px 6px;border-radius:10px;border:1px solid var(--border);white-space:nowrap;margin-left:10px">${cat}</span>
+            </div>`).join('')}
+        </div>
       </div>`).join('');
-  } catch(e) {}
+  } catch(e) { document.getElementById('skillsGrid').innerHTML = `<div style="color:var(--muted)">Error loading skills: ${e.message}</div>`; }
 }
 
 // =============================================================================
@@ -913,15 +1311,46 @@ async function undeployAgent(id) {
 }
 
 function openTempAgentChat(agentId, agentName) {
-  const msg = prompt(`Chat with ${agentName}:\n\nType your message:`);
-  if (!msg) return;
-  fetch('/api/openclaw/agents/' + agentId + '/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: msg }),
-  }).then(r => r.json()).then(d => {
-    alert(`${d.agent} (${d.category}):\n\n${d.reply}`);
-  }).catch(e => alert('Error: ' + e.message));
+  // Open a proper inline chat overlay for deployed temp agents
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:12px;width:600px;max-width:95vw;height:520px;display:flex;flex-direction:column;padding:16px;gap:10px';
+  const chatBox = document.createElement('div');
+  chatBox.style.cssText = 'flex:1;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:0.85rem;line-height:1.6';
+  chatBox.innerHTML = `<div style="color:var(--muted);text-align:center">Chat with <strong>${agentName}</strong></div>`;
+  const inputRow = document.createElement('div');
+  inputRow.style.cssText = 'display:flex;gap:8px';
+  const input = document.createElement('input');
+  input.style.cssText = 'flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:0.85rem;outline:none';
+  input.placeholder = `Message ${agentName}...`;
+  const sendBtn = document.createElement('button');
+  sendBtn.textContent = 'Send';
+  sendBtn.style.cssText = 'background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-weight:600';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕ Close';
+  closeBtn.style.cssText = 'background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:0.82rem';
+  closeBtn.onclick = () => document.body.removeChild(overlay);
+  async function send() {
+    const msg = input.value.trim(); if (!msg) return; input.value = '';
+    chatBox.innerHTML += `<div style="margin:8px 0;text-align:right"><span style="background:var(--accent);color:#fff;padding:6px 12px;border-radius:12px 12px 4px 12px;display:inline-block">${msg}</span></div>`;
+    chatBox.innerHTML += `<div id="tp-${Date.now()}" style="color:var(--muted);font-size:0.8rem">Thinking...</div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+    try {
+      const r = await fetch('/api/openclaw/agents/' + agentId + '/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg}) });
+      const d = await r.json();
+      chatBox.querySelector('[id^="tp-"]')?.remove();
+      chatBox.innerHTML += `<div style="margin:8px 0"><span style="background:var(--surface2);border:1px solid var(--border);padding:8px 12px;border-radius:4px 12px 12px 12px;display:inline-block;max-width:90%;white-space:pre-wrap">${d.reply||d.error}</span></div>`;
+    } catch(e) { chatBox.querySelector('[id^="tp-"]')?.remove(); chatBox.innerHTML += `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+  sendBtn.onclick = send;
+  input.onkeydown = e => { if (e.key === 'Enter') send(); };
+  inputRow.append(input, sendBtn, closeBtn);
+  panel.append(Object.assign(document.createElement('div'), { textContent: `${agentName}`, style: 'font-weight:700;font-size:0.95rem' }), chatBox, inputRow);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  input.focus();
 }
 
 socket.on('openclaw:deployed',   () => { if (document.getElementById('panel-agentpool').classList.contains('active')) refreshDeployed(); });

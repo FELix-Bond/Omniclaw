@@ -117,6 +117,72 @@ app.get('/api/org-chart', (req, res) => {
   res.json({ agents: Object.values(state.agents), skill_pool: [] });
 });
 
+// Skills — expose SKILL_MANIFEST in UI-friendly format (populated after SKILL_MANIFEST is defined)
+app.get('/api/skills', (req, res) => {
+  const all = Object.entries(SKILL_MANIFEST).flatMap(([category, items]) =>
+    items.map(s => ({ ...s, category }))
+  );
+  res.json({ skills: all, categories: Object.keys(SKILL_MANIFEST) });
+});
+
+// Memory — list files, read, write
+app.get('/api/memory/list', (req, res) => {
+  const files = fs.readdirSync(MEMORY_DIR).filter(f => !f.startsWith('.'));
+  res.json(files.map(f => {
+    const fp = path.join(MEMORY_DIR, f);
+    const stat = fs.statSync(fp);
+    return { name: f, size: stat.size, modified: stat.mtime };
+  }));
+});
+
+app.get('/api/memory/:file', (req, res) => {
+  const safe = req.params.file.replace(/[/\\]/g, '');
+  const fp = path.join(MEMORY_DIR, safe);
+  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'File not found' });
+  res.json({ name: safe, content: fs.readFileSync(fp, 'utf8') });
+});
+
+app.post('/api/memory/:file', (req, res) => {
+  const safe = req.params.file.replace(/[/\\]/g, '');
+  const { content } = req.body;
+  if (content === undefined) return res.status(400).json({ error: 'content required' });
+  fs.writeFileSync(path.join(MEMORY_DIR, safe), content, 'utf8');
+  res.json({ success: true, name: safe });
+});
+
+// Settings — read/write .env
+app.get('/api/settings', (req, res) => {
+  const envPath = path.join(ROOT, '.env');
+  if (!fs.existsSync(envPath)) return res.json({ settings: [] });
+  const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+  const settings = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) { settings.push({ type: 'comment', line }); continue; }
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 0) { settings.push({ type: 'comment', line }); continue; }
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1);
+    settings.push({ type: 'env', key, value, line });
+  }
+  res.json({ settings });
+});
+
+app.post('/api/settings/save', (req, res) => {
+  const { key, value } = req.body;
+  if (!key) return res.status(400).json({ error: 'key required' });
+  const envPath = path.join(ROOT, '.env');
+  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  const lines = content.split('\n');
+  const idx = lines.findIndex(l => { const e = l.indexOf('='); return e > 0 && l.slice(0, e).trim() === key; });
+  if (idx >= 0) lines[idx] = `${key}=${value}`;
+  else lines.push(`${key}=${value}`);
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf8');
+  // Hot-reload the key in current process
+  process.env[key] = value;
+  res.json({ success: true, message: `${key} updated. Restart dashboard for full effect.` });
+});
+
 // All agents
 app.get('/api/agents', (req, res) => {
   res.json(Object.values(state.agents));
@@ -724,28 +790,32 @@ async function executeActions(reply, systemPromptForSynthesis) {
 }
 
 app.post('/api/chat', async (req, res) => {
-  const { message, source } = req.body;
+  const { message, source, agentId } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
+
+  // Route to specific agent or CEO by default
+  const targetAgent = (agentId && AGENT_PERSONAS[agentId.toUpperCase()]) ? agentId.toUpperCase() : 'CEO';
+  const isSpecificAgent = targetAgent !== 'CEO' || agentId === 'CEO';
 
   chatHistory.push({ role: 'user', content: message, source: source || 'dashboard', timestamp: new Date().toISOString() });
   io.emit('chat:message', { role: 'user', content: message, source: source || 'dashboard', timestamp: new Date().toISOString() });
 
   try {
     const msgs = chatHistory.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.content }));
-    const sysPrompt = getSystemPrompt();
+    const sysPrompt = isSpecificAgent ? getAgentSystemPrompt(targetAgent) : getSystemPrompt();
+    const persona = AGENT_PERSONAS[targetAgent];
     const rawReply = await callAI(msgs, sysPrompt);
     const reply = await executeActions(rawReply, sysPrompt);
-    const response = { role: 'assistant', content: reply, source: 'CEO', timestamp: new Date().toISOString() };
-    chatHistory.push(response);
+    const response = { role: 'assistant', content: reply, source: persona ? `${persona.emoji} ${persona.name}` : 'CEO', agentId: targetAgent, timestamp: new Date().toISOString() };
+    chatHistory.push({ role: 'assistant', content: reply, source: response.source, timestamp: response.timestamp });
     if (chatHistory.length > 200) chatHistory.splice(0, 50);
 
     io.emit('chat:message', response);
     res.json(response);
 
-    // Log as agent activity
-    if (state.agents['CEO']) {
-      state.agents['CEO'].lastActive = new Date().toISOString();
-      state.agents['CEO'].currentTask = 'Responding to query';
+    if (state.agents[targetAgent]) {
+      state.agents[targetAgent].lastActive = new Date().toISOString();
+      state.agents[targetAgent].currentTask = 'Responding to query';
       io.emit('agents:update', Object.values(state.agents));
     }
   } catch (e) {
@@ -1580,55 +1650,43 @@ app.get('/api/update/check', async (req, res) => {
 // OPENCLAW AGENT POOL — browse + deploy 187 temporary specialist agents
 // Source: github.com/mergisi/awesome-openclaw-agents
 // =============================================================================
-const OPENCLAW_AGENTS_CACHE_PATH = path.join(MEMORY_DIR, 'openclaw-agents-cache.json');
-const OPENCLAW_AGENTS_URL = 'https://raw.githubusercontent.com/mergisi/awesome-openclaw-agents/main/agents.json';
 const TEMP_AGENTS_DIR = path.join(ROOT, 'agents', 'temp');
 
-let openclawAgentsCache = null;
-let openclawCacheTime = 0;
-
-async function getOpenclawAgents() {
-  const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-  if (openclawAgentsCache && Date.now() - openclawCacheTime < CACHE_TTL) return openclawAgentsCache;
-  // Try disk cache first
-  if (fs.existsSync(OPENCLAW_AGENTS_CACHE_PATH)) {
-    const stat = fs.statSync(OPENCLAW_AGENTS_CACHE_PATH);
-    if (Date.now() - stat.mtimeMs < CACHE_TTL) {
-      openclawAgentsCache = JSON.parse(fs.readFileSync(OPENCLAW_AGENTS_CACHE_PATH, 'utf8'));
-      openclawCacheTime = stat.mtimeMs;
-      return openclawAgentsCache;
+// Build the full agent pool from OPENCLAW_CATEGORY_AGENTS (built-in, always available)
+function buildAgentPool() {
+  const agents = [];
+  for (const [category, agentStr] of Object.entries(OPENCLAW_CATEGORY_AGENTS)) {
+    const agentNames = agentStr.split(',').map(n => n.trim()).filter(Boolean);
+    for (const raw of agentNames) {
+      const m = raw.match(/^(.+?)\s*\(([^)]+)\)$/);
+      const name = m ? m[1].trim() : raw;
+      const role = m ? m[2].trim() : raw;
+      const id = `${category}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      agents.push({ id, name, role, category, path: `agents/${category}/${id}/SOUL.md`, source: 'awesome-openclaw-agents' });
     }
   }
-  // Fetch from GitHub
-  try {
-    const r = await axios.get(OPENCLAW_AGENTS_URL, { timeout: 15000 });
-    openclawAgentsCache = r.data;
-    openclawCacheTime = Date.now();
-    fs.mkdirSync(MEMORY_DIR, { recursive: true });
-    fs.writeFileSync(OPENCLAW_AGENTS_CACHE_PATH, JSON.stringify(r.data, null, 2));
-    console.log(`[OPENCLAW] Fetched ${Array.isArray(r.data) ? r.data.length : '?'} agents from GitHub`);
-    return openclawAgentsCache;
-  } catch (e) {
-    console.log('[OPENCLAW] Could not fetch agents.json:', e.message);
-    return [];
-  }
+  return agents;
 }
 
-// List all 187 agents (with category filter)
-app.get('/api/openclaw/agents', async (req, res) => {
-  const agents = await getOpenclawAgents();
+let _agentPool = null;
+function getAgentPool() {
+  if (!_agentPool) _agentPool = buildAgentPool();
+  return _agentPool;
+}
+
+// List all agents (with category/search filter)
+app.get('/api/openclaw/agents', (req, res) => {
   const { category, q } = req.query;
-  let filtered = Array.isArray(agents) ? agents : [];
+  let filtered = getAgentPool();
   if (category) filtered = filtered.filter(a => a.category === category);
   if (q) { const lq = q.toLowerCase(); filtered = filtered.filter(a => (a.name+a.role+a.category).toLowerCase().includes(lq)); }
   res.json({ total: filtered.length, agents: filtered });
 });
 
 // List all categories (with counts)
-app.get('/api/openclaw/agents/categories', async (req, res) => {
-  const agents = await getOpenclawAgents();
+app.get('/api/openclaw/agents/categories', (req, res) => {
   const counts = {};
-  (Array.isArray(agents) ? agents : []).forEach(a => { counts[a.category] = (counts[a.category] || 0) + 1; });
+  getAgentPool().forEach(a => { counts[a.category] = (counts[a.category] || 0) + 1; });
   res.json(counts);
 });
 
@@ -1646,25 +1704,52 @@ app.get('/api/openclaw/agents/deployed', (req, res) => {
   res.json(deployed);
 });
 
-// Deploy a temporary agent — downloads SOUL.md from GitHub and saves to agents/temp/
+// Deploy a temporary agent
 app.post('/api/openclaw/agents/deploy', async (req, res) => {
   const { agentId, agentPath, name, category, role } = req.body;
-  if (!agentId || !agentPath) return res.status(400).json({ error: 'agentId and agentPath required (e.g. "agents/productivity/orion/SOUL.md")' });
+  if (!agentId) return res.status(400).json({ error: 'agentId required' });
 
-  const rawUrl = `https://raw.githubusercontent.com/mergisi/awesome-openclaw-agents/main/${agentPath}`;
-  try {
-    const r = await axios.get(rawUrl, { timeout: 15000, responseType: 'text' });
-    const soulContent = r.data;
-    const destDir = path.join(TEMP_AGENTS_DIR, agentId);
-    fs.mkdirSync(destDir, { recursive: true });
-    fs.writeFileSync(path.join(destDir, 'SOUL.md'), soulContent);
-    fs.writeFileSync(path.join(destDir, 'meta.json'), JSON.stringify({ agentId, name, category, role, agentPath, deployedAt: new Date().toISOString() }, null, 2));
-    console.log(`[OPENCLAW] Deployed agent: ${agentId} (${name || category})`);
-    io.emit('openclaw:deployed', { agentId, name, category, role });
-    res.json({ success: true, agentId, name, category, soulPath: `agents/temp/${agentId}/SOUL.md`, message: `${name || agentId} is ready. SOUL.md saved to agents/temp/${agentId}/` });
-  } catch (e) {
-    res.status(500).json({ error: `Could not fetch SOUL.md from GitHub: ${e.message}`, url: rawUrl });
+  const destDir = path.join(TEMP_AGENTS_DIR, agentId);
+  fs.mkdirSync(destDir, { recursive: true });
+
+  let soulContent = null;
+  // Try GitHub first
+  if (agentPath) {
+    const rawUrl = `https://raw.githubusercontent.com/mergisi/awesome-openclaw-agents/main/${agentPath}`;
+    try {
+      const r = await axios.get(rawUrl, { timeout: 15000, responseType: 'text' });
+      if (r.data && r.data.length > 20) soulContent = r.data;
+    } catch (_) {}
   }
+  // Generate a rich SOUL.md locally if GitHub unavailable
+  if (!soulContent) {
+    const catAgents = OPENCLAW_CATEGORY_AGENTS[category] || '';
+    soulContent = `# ${name || agentId} — ${role || category} Agent
+
+You are ${name || agentId}, a specialist ${role || category} agent deployed from the OmniClaw agent pool.
+
+## Your Focus
+${OPENCLAW_EXEC_CATEGORIES[category] ? `You specialise in ${OPENCLAW_EXEC_CATEGORIES[category].focus}` : `You are an expert in ${category} operations.`}
+
+## Your Capabilities
+You have access to the full OmniClaw action engine. Use actions proactively.
+Other ${category} specialists in your pool: ${catAgents}
+
+## Your Style
+- Expert, focused, and precise
+- Give specific, actionable output — not generic advice
+- If you need data, use [[ACTION:web_search|query]] or [[ACTION:web_fetch|url]]
+- If asked to save output, use [[ACTION:obsidian_write|Title|Content]]
+- Always complete the task fully before responding
+
+${AGENT_ACTION_REFERENCE}`;
+  }
+
+  fs.writeFileSync(path.join(destDir, 'SOUL.md'), soulContent);
+  fs.writeFileSync(path.join(destDir, 'meta.json'), JSON.stringify({ agentId, name, category, role, agentPath, deployedAt: new Date().toISOString() }, null, 2));
+  console.log(`[OPENCLAW] Deployed: ${agentId} (${name || category})`);
+  io.emit('openclaw:deployed', { agentId, name, category, role });
+  res.json({ success: true, agentId, name, category, message: `${name || agentId} is ready.` });
 });
 
 // Undeploy — remove temp agent
