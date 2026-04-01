@@ -13,6 +13,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Load .env — try multiple locations so it works regardless of where server is launched from
+// ENV_PATH is the single source of truth used by ALL read/write operations on .env
+let ENV_PATH = null;
 (function loadEnv() {
   const dotenv = require('dotenv');
   const p = require('path');
@@ -23,20 +25,19 @@ process.on('unhandledRejection', (reason) => {
     p.join(process.cwd(), '.env'),             // wherever node was launched from
     p.join(process.cwd(), '..', '.env'),       // one up from cwd
   ];
-  let loaded = false;
   for (const loc of candidates) {
     if (fs.existsSync(loc)) {
       dotenv.config({ path: loc });
+      ENV_PATH = loc;
       console.log(`[ENV] Loaded .env from: ${loc}`);
-      loaded = true;
-      break;
+      return;
     }
   }
-  if (!loaded) {
-    console.warn('[ENV] ⚠ No .env file found. Checked:');
-    candidates.forEach(c => console.warn(`       ${c}`));
-    console.warn('[ENV]   Run setup.sh to generate your .env, or create one manually.');
-  }
+  // No file found — default to standard path so Settings can create it
+  ENV_PATH = candidates[0];
+  console.warn('[ENV] ⚠ No .env file found. Checked:');
+  candidates.forEach(c => console.warn(`       ${c}`));
+  console.warn(`[ENV]   Settings saves will create: ${ENV_PATH}`);
 })();
 const express = require('express');
 const http = require('http');
@@ -190,11 +191,7 @@ app.get('/api/debug/env', (req, res) => {
   if (!ip.includes('127.0.0.1') && !ip.includes('::1') && !ip.includes('localhost')) {
     return res.status(403).json({ error: 'localhost only' });
   }
-  const envPath = [
-    path.join(ROOT, '.env'),
-    path.join(__dirname, '.env'),
-    path.join(process.cwd(), '.env'),
-  ].find(p => fs.existsSync(p)) || null;
+  const envPath = ENV_PATH;
 
   const KEY_GROUPS = {
     'AI Models': ['ANTHROPIC_API_KEY','OPENAI_API_KEY','GROQ_API_KEY','GOOGLE_AI_API_KEY','OPENROUTER_API_KEY','MODEL_CHAIN_1','MODEL_CHAIN_2','MODEL_CHAIN_3'],
@@ -215,9 +212,9 @@ app.get('/api/debug/env', (req, res) => {
   res.json({ envFile: envPath || 'NOT FOUND', keysLoaded: Object.keys(process.env).filter(k => !k.startsWith('npm_')).length, status });
 });
 
-// Settings — read/write .env
+// Settings — read/write .env (always use ENV_PATH — the file actually loaded at startup)
 app.get('/api/settings', (req, res) => {
-  const envPath = path.join(ROOT, '.env');
+  const envPath = ENV_PATH;
   if (!fs.existsSync(envPath)) return res.json({ settings: [] });
   const lines = fs.readFileSync(envPath, 'utf8').split('\n');
   const settings = [];
@@ -236,16 +233,20 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings/save', (req, res) => {
   const { key, value } = req.body;
   if (!key) return res.status(400).json({ error: 'key required' });
-  const envPath = path.join(ROOT, '.env');
+  const envPath = ENV_PATH;  // always write to the file we actually loaded
   let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
   const lines = content.split('\n');
+  // Quote the value so special chars (=, spaces, #) are handled correctly
+  const safeVal = `"${String(value).replace(/"/g, '\\"')}"`;
+  const newLine = `${key}=${safeVal}`;
   const idx = lines.findIndex(l => { const e = l.indexOf('='); return e > 0 && l.slice(0, e).trim() === key; });
-  if (idx >= 0) lines[idx] = `${key}=${value}`;
-  else lines.push(`${key}=${value}`);
+  if (idx >= 0) lines[idx] = newLine;
+  else lines.push(newLine);
   fs.writeFileSync(envPath, lines.join('\n'), 'utf8');
-  // Hot-reload the key in current process
+  // Hot-reload into current process
   process.env[key] = value;
-  res.json({ success: true, message: `${key} updated. Restart dashboard for full effect.` });
+  console.log(`[SETTINGS] ${key} saved to ${envPath}`);
+  res.json({ success: true, message: `${key} saved to ${envPath}` });
 });
 
 // All agents
