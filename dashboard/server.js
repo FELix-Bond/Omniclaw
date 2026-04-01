@@ -12,7 +12,32 @@ process.on('unhandledRejection', (reason) => {
   console.error('[CRASH] Unhandled promise rejection — server self-healing:', reason?.message || reason);
 });
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+// Load .env — try multiple locations so it works regardless of where server is launched from
+(function loadEnv() {
+  const dotenv = require('dotenv');
+  const p = require('path');
+  const fs = require('fs');
+  const candidates = [
+    p.join(__dirname, '..', '.env'),          // standard: omniclaw-bootstrap/.env
+    p.join(__dirname, '.env'),                 // inside dashboard/
+    p.join(process.cwd(), '.env'),             // wherever node was launched from
+    p.join(process.cwd(), '..', '.env'),       // one up from cwd
+  ];
+  let loaded = false;
+  for (const loc of candidates) {
+    if (fs.existsSync(loc)) {
+      dotenv.config({ path: loc });
+      console.log(`[ENV] Loaded .env from: ${loc}`);
+      loaded = true;
+      break;
+    }
+  }
+  if (!loaded) {
+    console.warn('[ENV] ⚠ No .env file found. Checked:');
+    candidates.forEach(c => console.warn(`       ${c}`));
+    console.warn('[ENV]   Run setup.sh to generate your .env, or create one manually.');
+  }
+})();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -157,6 +182,37 @@ app.post('/api/memory/:file', (req, res) => {
   if (content === undefined) return res.status(400).json({ error: 'content required' });
   fs.writeFileSync(path.join(MEMORY_DIR, safe), content, 'utf8');
   res.json({ success: true, name: safe });
+});
+
+// Debug — localhost only, shows env load state and which keys are present
+app.get('/api/debug/env', (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress || '';
+  if (!ip.includes('127.0.0.1') && !ip.includes('::1') && !ip.includes('localhost')) {
+    return res.status(403).json({ error: 'localhost only' });
+  }
+  const envPath = [
+    path.join(ROOT, '.env'),
+    path.join(__dirname, '.env'),
+    path.join(process.cwd(), '.env'),
+  ].find(p => fs.existsSync(p)) || null;
+
+  const KEY_GROUPS = {
+    'AI Models': ['ANTHROPIC_API_KEY','OPENAI_API_KEY','GROQ_API_KEY','GOOGLE_AI_API_KEY','OPENROUTER_API_KEY','MODEL_CHAIN_1','MODEL_CHAIN_2','MODEL_CHAIN_3'],
+    'Communication': ['TG_TOKEN','TG_CHAT_ID','DISCORD_TOKEN','SLACK_BOT_TOKEN'],
+    'Email/Google': ['GMAIL_ADDRESS','GMAIL_APP_PASSWORD','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'],
+    'Data': ['SUPABASE_URL','SUPABASE_KEY','SUPABASE_ANON_KEY','GITHUB_TOKEN','GITHUB_REPO'],
+    'Search': ['BRAVE_API_KEY','PERPLEXITY_API_KEY','TAVILY_API_KEY','SERPAPI_KEY'],
+    'Company': ['COMPANY_NAME','OWNER_NAME','DASHBOARD_PORT'],
+  };
+  const status = {};
+  for (const [group, keys] of Object.entries(KEY_GROUPS)) {
+    status[group] = {};
+    for (const k of keys) {
+      const v = process.env[k];
+      status[group][k] = v ? `SET (${v.slice(0,4)}••••)` : 'NOT SET';
+    }
+  }
+  res.json({ envFile: envPath || 'NOT FOUND', keysLoaded: Object.keys(process.env).filter(k => !k.startsWith('npm_')).length, status });
 });
 
 // Settings — read/write .env
