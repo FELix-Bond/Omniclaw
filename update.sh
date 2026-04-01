@@ -94,6 +94,10 @@ rsync -a --exclude='.env' \
 
 rm -rf "$TEMP_DIR"
 
+# --- Fix permissions on all scripts (rsync doesn't always preserve +x) ---
+find "$CURRENT_DIR" -maxdepth 2 -name "*.sh" -exec chmod +x {} \;
+chmod +x "$CURRENT_DIR/update.sh" 2>/dev/null || true
+
 # --- Restore user data from backup (safety net) ---
 [ -f "$BACKUP_DIR/.env" ]          && cp "$BACKUP_DIR/.env" "$CURRENT_DIR/.env"
 [ -d "$BACKUP_DIR/memory" ]        && cp -r "$BACKUP_DIR/memory/." "$CURRENT_DIR/memory/"
