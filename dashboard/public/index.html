@@ -85,6 +85,9 @@
   .ap-cat-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .ap-section { margin-bottom: 24px; }
   .ap-section h4 { font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .widget-card { cursor: grab; transition: box-shadow 0.15s; }
+  .widget-card:hover { box-shadow: 0 0 0 1px var(--accent); }
+  .widget-card:active { cursor: grabbing; }
 
   /* DECISIONS TABLE */
   .dec-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -258,6 +261,7 @@
         <div class="metric-card"><div class="m-label">Budget Used</div><div class="m-val" id="m-budget">$0</div><div class="m-sub" id="m-budget-limit">of —</div></div>
         <div class="metric-card"><div class="m-label">Heartbeat</div><div class="m-val" id="m-heartbeat">—</div><div class="m-sub">wake interval</div></div>
       </div>
+      <div id="widgetArea" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px"></div>
       <div class="section-title">C-Suite Overview</div>
       <div class="agents-grid" id="dashAgentGrid"></div>
       <div class="section-title">Recent Decisions</div>
@@ -831,6 +835,7 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
   const titles = { dashboard:'Dashboard', agents:'C-Suite Agents', decisions:'Decision Engine', orgchart:'Org Chart', github:'GitHub Integration', heartbeat:'Heartbeat Monitor', memory:'Agent Memory', chat:'Chat with CEO AI', skills:'Skill Pool', integrations:'Integrations', agentpool:'Agent Pool — 187 Specialists', agentchat:'Agent Chat', openclaw:'OpenClaw Engine', browser:'Browser', settings:'Settings', ideas:'Ideas & Suggestions' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
+  if (id === 'dashboard') { renderWidgets(); }
   if (id === 'github') refreshGithub();
   if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
   if (id === 'skills') loadSkills();
@@ -1298,12 +1303,23 @@ function renderSettings(settings) {
   grid.innerHTML = settings.map(s => {
     const isSecret = /KEY|TOKEN|SECRET|PASSWORD|PASS/i.test(s.key);
     const inputType = isSecret ? 'password' : 'text';
+    const eyeBtn = isSecret ? `<button onclick="toggleKeyVisibility('sv-${s.key}',this)" title="Show/hide" style="background:none;border:1px solid var(--border);border-radius:5px;padding:5px 7px;cursor:pointer;font-size:0.78rem;color:var(--muted)">👁</button>` : '';
     return `<div style="display:grid;grid-template-columns:260px 1fr auto;gap:8px;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
       <code style="font-size:0.78rem;color:var(--accent)">${s.key}</code>
-      <input type="${inputType}" value="${s.value.replace(/"/g,'&quot;')}" id="sv-${s.key}" style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;outline:none;font-family:monospace" onkeydown="if(event.key==='Enter')saveSetting('${s.key}')">
+      <div style="display:flex;gap:4px">
+        <input type="${inputType}" value="${s.value.replace(/"/g,'&quot;')}" id="sv-${s.key}" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;outline:none;font-family:monospace" onkeydown="if(event.key==='Enter')saveSetting('${s.key}')">
+        ${eyeBtn}
+      </div>
       <button onclick="saveSetting('${s.key}')" style="background:var(--accent);color:#fff;border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:0.75rem;white-space:nowrap">Save</button>
     </div>`;
   }).join('');
+}
+
+function toggleKeyVisibility(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
 }
 
 async function saveSetting(key) {
@@ -1598,8 +1614,15 @@ function toggleMic(btn, targetInputId) {
   };
 
   rec.onerror = (e) => {
-    if (e.error !== 'aborted') console.warn('STT error:', e.error);
+    console.warn('STT error:', e.error);
     stopMic();
+    if (e.error === 'not-allowed') {
+      const status = document.getElementById('voiceTestStatus');
+      if (status) { status.textContent = '🎤 Mic access denied — check browser permissions'; setTimeout(() => { status.textContent = ''; }, 4000); }
+      else alert('Microphone access denied. Please allow microphone access in your browser settings.');
+    } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+      console.warn('Mic error:', e.error);
+    }
   };
 
   rec.start();
@@ -1776,6 +1799,7 @@ async function loadIntegrations() {
             <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px">${hint || envKey}${url ? ` — <a href="${url}" target="_blank" style="color:var(--accent)">Get key →</a>` : ''}</div>
             <div style="display:flex;gap:6px">
               <input id="${rowId}-input" type="password" placeholder="${envKey}" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;font-family:monospace" />
+              <button onclick="toggleKeyVisibility('${rowId}-input',this)" title="Show/hide" style="background:none;border:1px solid var(--border);border-radius:5px;padding:5px 7px;cursor:pointer;font-size:0.78rem;color:var(--muted)">👁</button>
               <button onclick="saveIntegrationKey('${envKey}','${rowId}')" style="background:var(--accent);color:#fff;border:none;border-radius:5px;padding:5px 14px;cursor:pointer;font-size:0.8rem;font-weight:600">Save</button>
             </div>
           </div>` : ''}
@@ -1802,7 +1826,7 @@ async function saveIntegrationKey(envKey, rowId) {
   try {
     const r = await fetch('/api/settings/save', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ key: envKey, value: val }) });
     const d = await r.json();
-    if (d.ok) {
+    if (d.success || d.ok) {
       const edit = document.getElementById(rowId + '-edit');
       if (edit) edit.style.display = 'none';
       loadIntegrations(); // refresh badges
@@ -2158,7 +2182,7 @@ async function testVoiceOutput(btn) {
   btn.disabled = true; btn.textContent = '⏳';
   if (status) status.textContent = 'Sending to ' + (provider || 'auto') + '...';
   try {
-    const r = await fetch('/api/voice/speak', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: 'Hello! Voice is working. This is your selected provider.', provider: provider || undefined }) });
+    const r = await fetch('/api/voice/speak', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: 'Hello! Voice is working. This is your selected voice.', provider: provider || undefined, voice: voice || undefined }) });
     const ct = r.headers.get('content-type') || '';
     if (ct.includes('application/json')) {
       const d = await r.json();
@@ -2217,25 +2241,59 @@ async function loadOllamaModels() {
     if (!d.running) {
       statusEl.innerHTML = `<span style="color:var(--red)">⚠ Ollama not running</span> — start it with <code>ollama serve</code> or download from <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com</a>`;
       listEl.innerHTML = '';
-    } else {
-      statusEl.innerHTML = `<span style="color:var(--green)">✓ Ollama running</span> at ${d.host} — ${d.models.length} model${d.models.length !== 1 ? 's' : ''} available`;
-      if (!d.models.length) { listEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:span 2">No models pulled yet. Use the buttons below to download one.</div>'; return; }
-      listEl.innerHTML = d.models.map(m => `
-        <div style="padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
-          <div style="font-size:0.83rem;font-weight:600">${m.name}</div>
-          <div style="font-size:0.72rem;color:var(--muted)">${m.params || m.family || ''} · ${m.size ? (m.size/1e9).toFixed(1)+'GB' : ''}</div>
-        </div>`).join('');
+      return;
     }
+    statusEl.innerHTML = `<span style="color:var(--green)">✓ Ollama running</span> at ${d.host} — ${d.models.length} model${d.models.length !== 1 ? 's' : ''} available`;
+    if (!d.models.length) {
+      listEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:span 2">No models pulled yet. Use the buttons below to download one.</div>';
+      return;
+    }
+    const currentPrimary = ''; // Could fetch from settings
+    listEl.style.gridTemplateColumns = '1fr';
+    listEl.innerHTML = d.models.map(m => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+        <div>
+          <div style="font-size:0.85rem;font-weight:600">${m.name}</div>
+          <div style="font-size:0.72rem;color:var(--muted)">${[m.params, m.family, m.size ? (m.size/1e9).toFixed(1)+'GB' : ''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="ollamaSetDefault('${m.name}','primary',this)" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--accent);color:#fff;cursor:pointer" title="Set as primary AI model">⭐ Primary</button>
+          <button onclick="ollamaSetDefault('${m.name}','backup',this)" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer" title="Set as backup AI model">↩ Backup</button>
+        </div>
+      </div>`).join('');
   } catch(e) { if (statusEl) statusEl.textContent = 'Error: ' + e.message; }
+}
+
+async function ollamaSetDefault(model, slot, btn) {
+  const prev = btn.textContent;
+  btn.textContent = '⏳'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/ollama/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model, slot }) });
+    const d = await r.json();
+    btn.textContent = d.ok ? '✓ Set!' : '✗ Failed';
+    setTimeout(() => { btn.textContent = prev; btn.disabled = false; }, 2000);
+  } catch(e) { btn.textContent = '✗'; btn.disabled = false; }
 }
 
 async function ollamaPull(model) {
   const status = document.getElementById('ollamaPullStatus');
-  if (status) status.textContent = `⏳ Pulling ${model} — this may take a few minutes...`;
+  if (status) status.textContent = `⏳ Pulling ${model} — this may take several minutes...`;
   try {
-    const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: `Please run: ollama pull ${model}` }) });
-    if (status) status.textContent = `✓ Pull started for ${model}. Check terminal for progress.`;
-    setTimeout(loadOllamaModels, 5000);
+    const r = await fetch('/api/ollama/pull', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model }) });
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let lastMsg = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const lines = decoder.decode(value).split('\n').filter(Boolean);
+      for (const line of lines) {
+        try { const obj = JSON.parse(line); if (obj.status) lastMsg = obj.status; } catch(_) {}
+      }
+      if (status && lastMsg) status.textContent = `⏳ ${model}: ${lastMsg}`;
+    }
+    if (status) status.textContent = `✓ ${model} pulled successfully!`;
+    setTimeout(loadOllamaModels, 1000);
   } catch(e) { if (status) status.textContent = '✗ ' + e.message; }
 }
 
@@ -2325,6 +2383,7 @@ async function saveWidgetConfig() {
   checkboxes.forEach(cb => { const w = _widgetConfig.find(x => x.id === cb.dataset.wid); if (w) w.enabled = cb.checked; });
   await fetch('/api/dashboard/widgets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ widgets: _widgetConfig }) });
   closeWidgetConfig();
+  renderWidgets();
 }
 
 async function askCEOWidget() {
@@ -2335,6 +2394,110 @@ async function askCEOWidget() {
   closeWidgetConfig();
   await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: `Please build a dashboard widget that shows: ${msg}` }) });
   showPanel('chat');
+}
+
+// =============================================================================
+// WIDGET RENDERER — renders enabled widgets into #widgetArea on the dashboard
+// =============================================================================
+async function renderWidgets() {
+  let area = document.getElementById('widgetArea');
+  if (!area) return;
+  try {
+    const r = await fetch('/api/dashboard/widgets');
+    const d = await r.json();
+    _widgetConfig = d.widgets || [];
+  } catch(e) { return; }
+  const enabled = _widgetConfig.filter(w => w.enabled).sort((a,b) => (a.order||0)-(b.order||0));
+  if (!enabled.length) { area.innerHTML = ''; return; }
+  area.innerHTML = enabled.map(w => `
+    <div class="widget-card" id="widget-${w.id}" draggable="true"
+         ondragstart="widgetDragStart(event,'${w.id}')"
+         ondragover="event.preventDefault()"
+         ondrop="widgetDrop(event,'${w.id}')"
+         style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;min-height:80px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:0.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">${w.icon} ${w.label}</div>
+        <button onclick="openWidgetSettings('${w.id}')" title="Widget settings" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:2px 6px;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">⚙️</button>
+      </div>
+      <div id="widget-content-${w.id}" style="font-size:0.83rem;color:var(--muted)">Loading...</div>
+    </div>`).join('');
+  // Load content for each widget
+  for (const w of enabled) loadWidgetContent(w);
+}
+
+async function loadWidgetContent(w) {
+  const el = document.getElementById('widget-content-' + w.id);
+  if (!el) return;
+  try {
+    switch(w.id) {
+      case 'agents': {
+        const r = await fetch('/api/agents'); const agents = await r.json();
+        el.innerHTML = agents.slice(0,6).map(a => `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="width:7px;height:7px;background:var(--green);border-radius:50%;display:inline-block"></span><span>${a.emoji||''} ${a.name}</span><span style="margin-left:auto;font-size:0.7rem;color:var(--muted)">${a.currentTask||'Idle'}</span></div>`).join('');
+        break;
+      }
+      case 'decisions': {
+        const r = await fetch('/api/decisions?limit=5'); const decs = await r.json();
+        el.innerHTML = decs.length ? decs.map(d => `<div style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:6px"><div style="font-size:0.8rem">${d.objective.slice(0,60)}${d.objective.length>60?'…':''}</div><div style="font-size:0.7rem;color:var(--muted)">${d.status} · ${timeAgo(d.timestamp)}</div></div>`).join('') : '<span>No decisions yet</span>';
+        break;
+      }
+      case 'errors': {
+        const r = await fetch('/api/errors'); const dat = await r.json();
+        const errs = (dat.errors||[]).filter(e=>!e.resolved).slice(0,5);
+        el.innerHTML = errs.length ? errs.map(e => `<div style="color:var(--red);font-size:0.8rem;margin-bottom:4px">⚠ ${e.context}: ${e.message.slice(0,60)}</div>`).join('') : '<span style="color:var(--green)">✓ No errors</span>';
+        break;
+      }
+      case 'github': {
+        const r = await fetch('/api/github/status'); const dat = await r.json();
+        el.innerHTML = dat.connected ? `<div style="color:var(--green)">✓ Connected</div><div>${dat.repo||''}</div><div style="font-size:0.7rem;color:var(--muted)">Last push: ${dat.lastPush?timeAgo(dat.lastPush):'never'}</div>` : '<span style="color:var(--muted)">GitHub not connected</span>';
+        break;
+      }
+      case 'weather': {
+        const loc = w.settings?.location || 'Sydney,AU';
+        try {
+          const r = await fetch(`https://wttr.in/${encodeURIComponent(loc)}?format=%C+%t+%h`);
+          const txt = await r.text();
+          el.innerHTML = `<div>📍 ${loc}</div><div style="font-size:1rem;font-weight:600;margin-top:4px">${txt.trim()}</div>`;
+        } catch(_) { el.innerHTML = '<span>Weather unavailable</span>'; }
+        break;
+      }
+      case 'briefing': {
+        el.innerHTML = '<span style="color:var(--muted)">Morning briefing — send via CEO Chat or configure briefing time in Settings</span>';
+        break;
+      }
+      default:
+        el.innerHTML = `<span style="color:var(--muted)">${w.icon} ${w.label}</span>`;
+    }
+  } catch(e) { el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`; }
+}
+
+let _widgetDragId = null;
+function widgetDragStart(e, id) { _widgetDragId = id; e.dataTransfer.effectAllowed = 'move'; }
+function widgetDrop(e, targetId) {
+  if (!_widgetDragId || _widgetDragId === targetId) return;
+  const from = _widgetConfig.find(w => w.id === _widgetDragId);
+  const to = _widgetConfig.find(w => w.id === targetId);
+  if (from && to) { const tmp = from.order; from.order = to.order; to.order = tmp; }
+  fetch('/api/dashboard/widgets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ widgets: _widgetConfig }) });
+  renderWidgets();
+  _widgetDragId = null;
+}
+
+function openWidgetSettings(widgetId) {
+  const w = _widgetConfig.find(x => x.id === widgetId);
+  if (!w) return;
+  if (w.id === 'weather') {
+    const loc = prompt('Enter location for weather widget (e.g. Sydney,AU or London,UK):', w.settings?.location || 'Sydney,AU');
+    if (loc !== null) {
+      if (!w.settings) w.settings = {};
+      w.settings.location = loc;
+      fetch('/api/dashboard/widgets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ widgets: _widgetConfig }) });
+      loadWidgetContent(w);
+    }
+  } else {
+    // Open CEO chat to customise this widget
+    document.getElementById('chatInput').value = `Please customise my ${w.label} dashboard widget. Current config: ${JSON.stringify(w.settings||{})}`;
+    showPanel('chat');
+  }
 }
 
 async function runImprovementNow() {

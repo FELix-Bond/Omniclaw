@@ -493,6 +493,8 @@ HONESTY RULES — never break these:
 - If an action fails, report the error message. Don't pretend it succeeded.
 - If you don't know something, search for it with [[ACTION:web_search|query]] rather than guessing.
 ${process.env.GMAIL_ADDRESS ? `- Company email address: ${process.env.GMAIL_ADDRESS} — use this exact address when referring to email. Never use any other address.` : '- No company email configured yet. Do not invent one.'}
+- Configured integrations you CAN use right now:${process.env.TG_TOKEN ? ` Telegram (send updates with [[ACTION:telegram_send|message]], chat_id=${process.env.TG_CHAT_ID||'not set'}${!process.env.TG_CHAT_ID?' — TG_CHAT_ID missing, cannot send proactively':''});` : ' Telegram: NOT configured;'}${process.env.SLACK_BOT_TOKEN ? ` Slack ([[ACTION:slack_send|#channel|message]]);` : ''}${process.env.NOTION_TOKEN ? ` Notion ([[ACTION:notion_create|Title|Content]]);` : ''}${process.env.STRIPE_SECRET_KEY ? ` Stripe ([[ACTION:stripe_revenue]] [[ACTION:stripe_create_invoice|email|cents|desc]]);` : ''}${process.env.SUPABASE_URL ? ` Supabase ([[ACTION:supabase_query|table|filter]]);` : ''}${(process.env.BRAVE_API_KEY||process.env.BRAVE_SEARCH_API_KEY) ? ` Web search ([[ACTION:web_search|query]]);` : ''}${process.env.GITHUB_TOKEN ? ` GitHub ([[ACTION:github_push|msg]] [[ACTION:github_create_issue|title|body]]);` : ''}
+- If an integration is NOT listed above as configured, do NOT attempt to use it and do NOT pretend it exists.
 
 ${AGENT_ACTION_REFERENCE}
 
@@ -1470,7 +1472,27 @@ async function sendTelegramVoice(chatId, text) {
     });
     return true;
   } catch (e) {
-    console.log('[TG] Voice reply failed:', e.response?.data || e.message);
+    console.log('[TG] Voice reply failed (wav):', e.response?.data?.error?.message || e.message);
+    // Retry with mp3 format
+    try {
+      const groqKey2 = process.env.GROQ_API_KEY;
+      const voice2 = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+      const audioResp2 = await axios.post(
+        'https://api.groq.com/openai/v1/audio/speech',
+        { model: 'playai-tts', voice: voice2, input: stripForSpeech(text), response_format: 'mp3' },
+        { headers: { Authorization: `Bearer ${groqKey2}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+      );
+      const FormData2 = require('form-data');
+      const form2 = new FormData2();
+      form2.append('chat_id', String(chatId));
+      form2.append('voice', Buffer.from(audioResp2.data), { filename: 'reply.mp3', contentType: 'audio/mpeg' });
+      await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendVoice`, form2, {
+        headers: form2.getHeaders(), timeout: 30000,
+      });
+      return true;
+    } catch(e2) {
+      console.log('[TG] Voice reply mp3 also failed:', e2.response?.data?.error?.message || e2.message);
+    }
     return false;
   }
 }
@@ -1512,6 +1534,7 @@ function getAgentSystemPrompt(agentId) {
 Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
 Company: ${state.company} | Owner: ${state.owner}
 ${process.env.GMAIL_ADDRESS ? `Company email: ${process.env.GMAIL_ADDRESS} — always use this exact address. Never invent email addresses.` : 'No company email configured — do not invent email addresses.'}
+Configured integrations:${process.env.TG_TOKEN ? ` Telegram (TG_CHAT_ID=${process.env.TG_CHAT_ID||'not set'});` : ''}${process.env.GMAIL_ADDRESS ? ` Gmail;` : ''}${process.env.SLACK_BOT_TOKEN ? ` Slack;` : ''}${process.env.STRIPE_SECRET_KEY ? ` Stripe;` : ''}${(process.env.BRAVE_API_KEY||process.env.BRAVE_SEARCH_API_KEY) ? ` Web search;` : ''}
 ${profile ? profile.slice(0, 500) : ''}
 ${skillContext}
 ${AGENT_ACTION_REFERENCE}`;
@@ -2274,7 +2297,7 @@ app.post('/api/voice/speak', async (req, res) => {
   // Groq TTS (uses existing GROQ_API_KEY — no extra cost)
   if (provider === 'groq') {
     if (!process.env.GROQ_API_KEY) return res.status(503).json({ error: 'GROQ_API_KEY not set', browser: true, text });
-    const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+    const voice = req.body.voice || process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
     try {
       const r = await axios.post(
         'https://api.groq.com/openai/v1/audio/speech',
@@ -2343,6 +2366,36 @@ app.post('/api/voice/transcribe', upload.single('audio'), async (req, res) => {
 // =============================================================================
 // OLLAMA — fetch available local models
 // =============================================================================
+app.post('/api/ollama/pull', async (req, res) => {
+  const { model } = req.body;
+  if (!model) return res.status(400).json({ error: 'model required' });
+  const base = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  try {
+    const r = await axios.post(`${base}/api/pull`, { name: model }, { responseType: 'stream', timeout: 300000 });
+    r.data.on('data', chunk => res.write(chunk));
+    r.data.on('end', () => res.end());
+    r.data.on('error', () => res.end());
+  } catch(e) { res.write(JSON.stringify({ error: e.message })); res.end(); }
+});
+
+app.post('/api/ollama/set-default', (req, res) => {
+  const { model, slot } = req.body; // slot: 'primary' | 'backup'
+  if (!model) return res.status(400).json({ error: 'model required' });
+  const key = slot === 'backup' ? 'MODEL_CHAIN_2' : 'MODEL_CHAIN_1';
+  const value = `ollama::${model}`;
+  const envPath = ENV_PATH;
+  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  const lines = content.split('\n');
+  const idx = lines.findIndex(l => { const e = l.indexOf('='); return e > 0 && l.slice(0, e).trim() === key; });
+  const newLine = `${key}="${value}"`;
+  if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf8');
+  process.env[key] = value;
+  res.json({ ok: true, key, value });
+});
+
 app.get('/api/ollama/models', async (req, res) => {
   const base = process.env.OLLAMA_HOST || 'http://localhost:11434';
   try {
@@ -2693,6 +2746,30 @@ server.listen(PORT, () => {
   // Self-improvement engine: runs every night at 02:00
   cron.schedule('0 2 * * *', runSelfImprovement, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
   console.log('   CIO:       Self-improvement sweep scheduled nightly at 02:00');
+
+  // Auto-update: pull latest from GitHub at 03:00 every night
+  cron.schedule('0 3 * * *', async () => {
+    console.log('[UPDATE] 🔄 Nightly auto-update check starting...');
+    try {
+      const { execSync } = require('child_process');
+      // Update OmniClaw itself
+      const out = execSync('git pull --ff-only origin main 2>&1', { cwd: ROOT, timeout: 60000, encoding: 'utf8' });
+      console.log('[UPDATE] OmniClaw:', out.trim());
+      // Re-check version after pull
+      await checkForUpdate();
+      // Check for any openclaw or agent sub-repos inside the project
+      const repoDirs = ['openclaw', 'agents', 'tools'].map(d => path.join(ROOT, d)).filter(d => {
+        try { return fs.existsSync(path.join(d, '.git')); } catch(_) { return false; }
+      });
+      for (const dir of repoDirs) {
+        try {
+          const r = execSync('git pull --ff-only 2>&1', { cwd: dir, timeout: 30000, encoding: 'utf8' });
+          console.log(`[UPDATE] ${path.basename(dir)}:`, r.trim());
+        } catch(e) { console.log(`[UPDATE] ${path.basename(dir)}: ${e.message.slice(0,100)}`); }
+      }
+    } catch(e) { console.log('[UPDATE] Auto-update failed:', e.message.slice(0,200)); }
+  }, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
+  console.log('   Update:    Auto-update scheduled nightly at 03:00');
 
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
