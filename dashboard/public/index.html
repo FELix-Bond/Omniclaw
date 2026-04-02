@@ -373,6 +373,7 @@
           <span style="font-size:0.8rem;color:var(--muted)">Thinking...</span>
         </div>
         <div class="chat-input-row">
+          <button id="chatMicBtn" onclick="toggleMic(this,'chatInput')" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 12px;cursor:pointer;font-size:1rem;color:var(--muted);flex-shrink:0;height:40px">🎤</button>
           <input type="text" id="chatInput" placeholder="Ask your CEO AI anything..." onkeydown="if(event.key==='Enter')sendChat()">
           <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
         </div>
@@ -390,6 +391,7 @@
           <div style="color:var(--muted);text-align:center;margin-top:40px">Select an agent above to start chatting</div>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="toggleMic(this,'agentChatInput')" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 12px;cursor:pointer;font-size:1rem;color:var(--muted);flex-shrink:0">🎤</button>
           <input type="text" id="agentChatInput" placeholder="Message your agent..." onkeydown="if(event.key==='Enter')sendAgentChat()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:0.88rem;outline:none">
           <button onclick="sendAgentChat()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-weight:600">Send</button>
         </div>
@@ -548,6 +550,45 @@
             <div id="llmChain" style="display:grid;gap:8px;margin-bottom:14px"></div>
             <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:8px">AVAILABLE PROVIDERS</div>
             <div id="llmProviders" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+          </div>
+
+          <!-- VOICE CONFIG -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px" id="voiceConfigCard">
+            <div style="font-weight:700;margin-bottom:4px">🎙️ Voice</div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Text-to-speech for agent replies. Microphone input works in Chrome/Edge via Web Speech API for free. Groq TTS uses your existing Groq key at no extra cost.</p>
+            <div style="display:grid;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+                <div>
+                  <div style="font-size:0.85rem;font-weight:600">TTS Provider</div>
+                  <div style="font-size:0.75rem;color:var(--muted)" id="voiceProviderHint">Auto-detecting...</div>
+                </div>
+                <select id="voiceProviderSelect" onchange="saveVoiceProvider(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:0.82rem;cursor:pointer">
+                  <option value="">Auto-detect</option>
+                  <option value="webspeech">🌐 Web Speech API (free, browser)</option>
+                  <option value="groq">⚡ Groq TTS (uses GROQ_API_KEY)</option>
+                  <option value="elevenlabs">🎵 ElevenLabs (premium)</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+                <div>
+                  <div style="font-size:0.85rem;font-weight:600">Groq TTS Voice</div>
+                  <div style="font-size:0.75rem;color:var(--muted)">Used when Groq is the TTS provider</div>
+                </div>
+                <select id="groqVoiceSelect" onchange="saveGroqVoice(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:0.82rem;cursor:pointer">
+                  <option value="Fritz-PlayAI">Fritz (Male, US)</option>
+                  <option value="Arista-PlayAI">Arista (Female, US)</option>
+                  <option value="Atlas-PlayAI">Atlas (Male, calm)</option>
+                  <option value="Celeste-PlayAI">Celeste (Female, warm)</option>
+                  <option value="Chip-PlayAI">Chip (Male, casual)</option>
+                  <option value="Deedee-PlayAI">Deedee (Female, upbeat)</option>
+                </select>
+              </div>
+              <div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+                <div style="font-size:0.85rem;font-weight:600;margin-bottom:6px">Microphone (STT)</div>
+                <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">🎤 button appears in Chat and Agent Chat inputs. Uses Web Speech API in Chrome/Edge (free). Falls back to Groq Whisper for other browsers. Telegram voice messages are auto-transcribed using Groq Whisper.</div>
+                <button onclick="speakMessage({textContent:'🔊',style:{}}, 'Hello! Voice is working correctly.')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:0.8rem">Test voice output</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1335,19 +1376,105 @@ function appendChatBubble(msg) {
   wrap.scrollTop = wrap.scrollHeight;
 }
 
+// Speak text via best available provider. Falls back to browser Web Speech API.
 async function speakMessage(btn, text) {
+  // Stop if already playing
   if (btn._audio) { btn._audio.pause(); btn._audio = null; btn.textContent = '🔊'; return; }
+  if (btn._synth) { window.speechSynthesis.cancel(); btn._synth = false; btn.textContent = '🔊'; return; }
   btn.textContent = '⏳';
   try {
     const r = await fetch('/api/voice/speak', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ text }) });
-    if (!r.ok) { const e = await r.json(); alert(e.error); btn.textContent = '🔊'; return; }
+    const ct = r.headers.get('content-type') || '';
+    // Server may return JSON telling client to use browser TTS
+    if (ct.includes('application/json')) {
+      const d = await r.json();
+      if (d.browser) { speakBrowser(btn, d.text || text); return; }
+      btn.textContent = '🔊';
+      if (d.error) console.warn('TTS error:', d.error);
+      return;
+    }
+    // Audio stream from Groq or ElevenLabs
     const blob = await r.blob();
     const audio = new Audio(URL.createObjectURL(blob));
     btn._audio = audio;
     btn.textContent = '⏹';
     audio.play();
     audio.onended = () => { btn.textContent = '🔊'; btn._audio = null; };
-  } catch(e) { alert('Voice error: ' + e.message); btn.textContent = '🔊'; }
+  } catch(e) {
+    // Network error — fall back to browser
+    speakBrowser(btn, text);
+  }
+}
+
+function speakBrowser(btn, text) {
+  if (!window.speechSynthesis) { btn.textContent = '🔊'; return; }
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 1.05; utt.pitch = 1;
+  // Prefer a natural-sounding voice if available
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Google UK English Female'));
+  if (preferred) utt.voice = preferred;
+  btn._synth = true;
+  btn.textContent = '⏹';
+  utt.onend = utt.onerror = () => { btn.textContent = '🔊'; btn._synth = false; };
+  window.speechSynthesis.speak(utt);
+}
+
+// =============================================================================
+// MIC — browser speech-to-text using Web Speech API
+// =============================================================================
+let _micRecog = null;
+function toggleMic(btn, targetInputId) {
+  const input = document.getElementById(targetInputId);
+  if (_micRecog) {
+    _micRecog.stop(); _micRecog = null;
+    btn.style.color = 'var(--muted)'; btn.title = 'Voice input';
+    return;
+  }
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    // Fallback: record audio and send to /api/voice/transcribe
+    recordAndTranscribe(btn, input);
+    return;
+  }
+  const rec = new SpeechRec();
+  rec.continuous = false; rec.interimResults = false; rec.lang = 'en-AU';
+  rec.onstart = () => { btn.style.color = '#e74c3c'; btn.title = 'Listening... click to stop'; };
+  rec.onresult = (e) => { input.value = e.results[0][0].transcript; };
+  rec.onend = () => { btn.style.color = 'var(--muted)'; btn.title = 'Voice input'; _micRecog = null; };
+  rec.onerror = (e) => { console.warn('Speech recognition error:', e.error); btn.style.color = 'var(--muted)'; _micRecog = null; };
+  rec.start();
+  _micRecog = rec;
+}
+
+async function recordAndTranscribe(btn, input) {
+  // MediaRecorder fallback for browsers without SpeechRecognition (e.g. Firefox)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+    btn.style.color = '#e74c3c'; btn.title = 'Recording... click to stop';
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      btn.style.color = 'var(--muted)'; btn.title = 'Voice input';
+      btn.textContent = '⏳';
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      const form = new FormData(); form.append('audio', blob, 'voice.webm');
+      try {
+        const r = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
+        const d = await r.json();
+        if (d.text) input.value = d.text;
+        else alert('Transcription failed: ' + (d.error || 'unknown'));
+      } catch(e) { alert('Transcription error: ' + e.message); }
+      btn.textContent = '🎤';
+    };
+    recorder.start();
+    // Auto-stop after 30s
+    const stopTimer = setTimeout(() => recorder.stop(), 30000);
+    btn.onclick = () => { clearTimeout(stopTimer); recorder.stop(); btn.onclick = () => toggleMic(btn, input.id); };
+  } catch(e) { alert('Microphone access denied: ' + e.message); btn.style.color = 'var(--muted)'; }
 }
 
 function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
@@ -1818,6 +1945,37 @@ function switchSettingsTab(tab, el) {
   if (tab === 'integrations') loadIntegrations();
   if (tab === 'memory') loadMemory();
   if (tab === 'errors') loadErrorLog();
+  if (tab === 'aimodels') loadVoiceConfig();
+}
+
+async function loadVoiceConfig() {
+  try {
+    const r = await fetch('/api/voice/provider');
+    const d = await r.json();
+    const sel = document.getElementById('voiceProviderSelect');
+    const hint = document.getElementById('voiceProviderHint');
+    if (sel) sel.value = process.env?.VOICE_TTS_PROVIDER || '';
+    if (hint) {
+      const labels = { groq: '⚡ Groq TTS active (uses your Groq key)', elevenlabs: '🎵 ElevenLabs active', webspeech: '🌐 Browser Web Speech API active' };
+      hint.textContent = labels[d.provider] || `Auto-selected: ${d.provider}`;
+    }
+    // Set current Groq voice selection
+    const gv = document.getElementById('groqVoiceSelect');
+    if (gv) {
+      const r2 = await fetch('/api/settings');
+      const d2 = await r2.json();
+      const voiceEnv = (d2.settings||[]).find(s=>s.key==='VOICE_GROQ_VOICE');
+      if (voiceEnv) gv.value = voiceEnv.value;
+    }
+  } catch(e) {}
+}
+
+async function saveVoiceProvider(val) {
+  await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:'VOICE_TTS_PROVIDER', value: val }) });
+  loadVoiceConfig();
+}
+async function saveGroqVoice(val) {
+  await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:'VOICE_GROQ_VOICE', value: val }) });
 }
 
 async function loadErrorLog() {

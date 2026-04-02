@@ -1434,12 +1434,12 @@ ${primaryList}
 When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.${codexNote}${openclawNote}`;
 }
 
-async function sendTelegram(chatId, text) {
+async function sendTelegram(chatId, text, parse_mode) {
   if (!process.env.TG_TOKEN) return;
   try {
-    await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, {
-      chat_id: chatId, text,
-    }, { timeout: 10000 });
+    const payload = { chat_id: chatId, text };
+    if (parse_mode) payload.parse_mode = parse_mode;
+    await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, payload, { timeout: 10000 });
   } catch (e) { console.log('[TG] Send failed:', e.message); }
 }
 
@@ -1476,6 +1476,37 @@ ${skillContext}
 ${AGENT_ACTION_REFERENCE}`;
 }
 
+// Transcribe a Telegram voice/audio file using Groq Whisper
+async function transcribeTelegramVoice(fileId) {
+  const groqKey = process.env.GROQ_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!groqKey && !openaiKey) return null;
+  try {
+    // Step 1: get download URL
+    const fileInfo = await axios.get(`https://api.telegram.org/bot${process.env.TG_TOKEN}/getFile?file_id=${fileId}`);
+    const filePath = fileInfo.data.result?.file_path;
+    if (!filePath) return null;
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TG_TOKEN}/${filePath}`;
+    // Step 2: download audio
+    const audioResp = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 20000 });
+    const audioBuffer = Buffer.from(audioResp.data);
+    // Step 3: transcribe
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('file', audioBuffer, { filename: 'voice.ogg', contentType: 'audio/ogg' });
+    form.append('model', groqKey ? 'whisper-large-v3-turbo' : 'whisper-1');
+    form.append('response_format', 'json');
+    const endpoint = groqKey ? 'https://api.groq.com/openai/v1/audio/transcriptions' : 'https://api.openai.com/v1/audio/transcriptions';
+    const r = await axios.post(endpoint, form, {
+      headers: { ...form.getHeaders(), Authorization: `Bearer ${groqKey || openaiKey}` }, timeout: 30000,
+    });
+    return r.data.text || null;
+  } catch (e) {
+    console.log('[TG] Voice transcription failed:', e.message);
+    return null;
+  }
+}
+
 async function pollTelegram() {
   if (!process.env.TG_TOKEN) return;
   try {
@@ -1487,10 +1518,23 @@ async function pollTelegram() {
     for (const update of updates) {
       tgOffset = update.update_id + 1;
       const msg = update.message;
-      if (!msg?.text) continue;
+      if (!msg?.text && !msg?.voice && !msg?.audio) continue;
       const chatId = msg.chat.id;
-      const text = msg.text;
       const from = msg.from?.first_name || 'User';
+
+      // Handle voice/audio messages — transcribe and route as text
+      let text = msg.text;
+      if (!text && (msg.voice || msg.audio)) {
+        const fileId = (msg.voice || msg.audio).file_id;
+        await sendTelegram(chatId, '🎙️ Transcribing voice message...');
+        const transcript = await transcribeTelegramVoice(fileId);
+        if (!transcript) {
+          await sendTelegram(chatId, '⚠️ Could not transcribe — add GROQ_API_KEY or OPENAI_API_KEY to enable voice messages.');
+          continue;
+        }
+        text = transcript;
+        await sendTelegram(chatId, `📝 _Transcribed:_ "${transcript}"`, 'Markdown');
+      }
       console.log(`[TG] Message from ${from}: ${text}`);
       io.emit('chat:message', { role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
 
@@ -2149,24 +2193,104 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
 });
 
 // =============================================================================
-// VOICE — ElevenLabs TTS (streams audio back as MP3)
+// VOICE — multi-provider TTS + Whisper STT
+// Provider priority: VOICE_TTS_PROVIDER env var, or auto-detect from keys
+// Providers: 'webspeech' (browser-native), 'groq', 'elevenlabs'
 // =============================================================================
+
+// Helper — pick best available TTS provider
+function getTTSProvider() {
+  const pref = (process.env.VOICE_TTS_PROVIDER || '').toLowerCase();
+  if (pref === 'groq' && process.env.GROQ_API_KEY)       return 'groq';
+  if (pref === 'elevenlabs' && process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
+  if (pref === 'webspeech') return 'webspeech';
+  // Auto-detect: prefer free providers first, then paid
+  if (process.env.GROQ_API_KEY)       return 'groq';
+  if (process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
+  return 'webspeech'; // browser-native fallback, always available
+}
+
+app.get('/api/voice/provider', (req, res) => {
+  res.json({ provider: getTTSProvider() });
+});
+
 app.post('/api/voice/speak', async (req, res) => {
-  const { text } = req.body;
+  const { text, provider: reqProvider } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set. Add it in Settings.' });
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // default: Bella
+
+  const provider = reqProvider || getTTSProvider();
+
+  // Browser-native: tell client to use Web Speech API
+  if (provider === 'webspeech') {
+    return res.json({ browser: true, text });
+  }
+
+  // Groq TTS (uses existing GROQ_API_KEY — no extra cost)
+  if (provider === 'groq') {
+    if (!process.env.GROQ_API_KEY) return res.status(503).json({ error: 'GROQ_API_KEY not set', browser: true, text });
+    const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+    try {
+      const r = await axios.post(
+        'https://api.groq.com/openai/v1/audio/speech',
+        { model: 'playai-tts', voice, input: text.slice(0, 2000), response_format: 'wav' },
+        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'stream' }
+      );
+      res.set('Content-Type', 'audio/wav');
+      return r.data.pipe(res);
+    } catch (e) {
+      // Gracefully fall back to browser TTS if Groq fails
+      return res.json({ browser: true, text, error: e.response?.data?.error?.message || e.message });
+    }
+  }
+
+  // ElevenLabs TTS
+  if (provider === 'elevenlabs') {
+    if (!process.env.ELEVENLABS_API_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set', browser: true, text });
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella
+    try {
+      const r = await axios.post(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        { text: text.slice(0, 2500), model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } },
+        { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, responseType: 'stream' }
+      );
+      res.set('Content-Type', 'audio/mpeg');
+      return r.data.pipe(res);
+    } catch (e) {
+      return res.json({ browser: true, text, error: e.response?.data?.detail || e.message });
+    }
+  }
+
+  res.json({ browser: true, text });
+});
+
+// Groq Whisper STT — transcribe uploaded audio
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+app.post('/api/voice/transcribe', upload.single('audio'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'audio file required' });
+  const groqKey = process.env.GROQ_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!groqKey && !openaiKey) return res.status(503).json({ error: 'No STT key configured. Add GROQ_API_KEY or OPENAI_API_KEY.' });
+
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('file', req.file.buffer, { filename: req.file.originalname || 'audio.webm', contentType: req.file.mimetype });
+  form.append('model', groqKey ? 'whisper-large-v3-turbo' : 'whisper-1');
+  form.append('response_format', 'json');
+
+  const endpoint = groqKey
+    ? 'https://api.groq.com/openai/v1/audio/transcriptions'
+    : 'https://api.openai.com/v1/audio/transcriptions';
+  const authKey = groqKey || openaiKey;
   try {
-    const r = await axios.post(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      { text: text.slice(0, 2500), model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } },
-      { headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, responseType: 'stream' }
-    );
-    res.set('Content-Type', 'audio/mpeg');
-    r.data.pipe(res);
+    const r = await axios.post(endpoint, form, {
+      headers: { ...form.getHeaders(), Authorization: `Bearer ${authKey}` },
+      timeout: 30000,
+    });
+    res.json({ text: r.data.text || '' });
   } catch (e) {
-    res.status(500).json({ error: e.response?.data?.detail || e.message });
+    res.status(500).json({ error: e.response?.data?.error?.message || e.message });
   }
 });
 
