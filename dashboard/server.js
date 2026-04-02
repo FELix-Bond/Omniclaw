@@ -60,6 +60,23 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.DASHBOARD_PORT || 3000;
+
+// =============================================================================
+// ERROR LOG — tracked in memory, exposed via /api/errors
+// =============================================================================
+const errorLog = [];
+let errorIdCounter = 1;
+function logError(context, message, { suggestion = '', fixable = false } = {}) {
+  const entry = { id: String(errorIdCounter++), context, message, suggestion, fixable, time: new Date().toISOString(), resolved: false };
+  errorLog.unshift(entry);
+  if (errorLog.length > 100) errorLog.pop(); // keep last 100
+  console.error(`[ERROR] [${context}] ${message}`);
+  return entry;
+}
+function resolveError(id) {
+  const e = errorLog.find(e => e.id === id);
+  if (e) e.resolved = true;
+}
 const ROOT = path.join(__dirname, '..');
 const AGENTS_DIR = path.join(ROOT, 'agents', 'csuite');
 const CONFIGS_DIR = path.join(ROOT, 'configs');
@@ -219,6 +236,22 @@ app.get('/api/browser/open', (req, res) => {
     }
   } catch(e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Error log endpoints
+app.get('/api/errors', (req, res) => res.json({ errors: errorLog }));
+app.post('/api/errors/fix', async (req, res) => {
+  const { id } = req.body;
+  const entry = errorLog.find(e => e.id === id);
+  if (!entry) return res.status(404).json({ error: 'Not found' });
+  // Basic auto-fix: restart suggestion, reload env, clear cooldowns
+  entry.resolved = true;
+  if (entry.context === 'callAI') {
+    Object.keys(providerCooldown).forEach(k => delete providerCooldown[k]);
+    res.json({ message: 'All AI provider cooldowns cleared. Try again now.' });
+  } else {
+    res.json({ message: `Marked as resolved. Check Settings → AI Models or Integrations for manual steps.` });
   }
 });
 
@@ -459,6 +492,7 @@ HONESTY RULES — never break these:
 - Never invent domain names, email addresses, credentials, or infrastructure details unless explicitly told them in this conversation.
 - If an action fails, report the error message. Don't pretend it succeeded.
 - If you don't know something, search for it with [[ACTION:web_search|query]] rather than guessing.
+${process.env.GMAIL_ADDRESS ? `- Company email address: ${process.env.GMAIL_ADDRESS} — use this exact address when referring to email. Never use any other address.` : '- No company email configured yet. Do not invent one.'}
 
 ${AGENT_ACTION_REFERENCE}
 
@@ -618,16 +652,18 @@ async function callAI(messages, systemPromptOverride) {
     } catch (e) {
       const status = e.response?.status;
       if (status === 429) {
-        setCooldown(provider, 90000); // rate limited — 90s cooldown
+        setCooldown(provider, 90000);
+        logError('callAI', `${provider} rate limited (429) — 90s cooldown applied`, { suggestion: `Wait 90 seconds or add a different AI provider key in Settings → AI Models`, fixable: true });
       } else if (status === 401 || status === 403) {
-        setCooldown(provider, 3600000); // bad key — 1hr cooldown
-        console.log(`[CHAT] ${provider} auth failed — check API key`);
+        setCooldown(provider, 3600000);
+        logError('callAI', `${provider} API key rejected (${status}) — check your key`, { suggestion: `Go to Settings → AI Models and verify your ${provider.toUpperCase()}_API_KEY`, fixable: false });
       } else {
         console.log(`[CHAT] ${provider}${model?'/'+model:''} failed (${status||e.code||e.message}) — trying next`);
       }
     }
   }
-  return '⚠️ All AI providers are unavailable right now (rate limits or missing keys). Check Settings → LLM Configuration or wait 90 seconds for rate limits to clear.';
+  logError('callAI', 'All AI providers exhausted — no response generated', { suggestion: 'Add at least one AI API key in Settings → AI Models (Groq is free)', fixable: false });
+  return '⚠️ All AI providers are unavailable right now (rate limits or missing keys). Check Settings → AI Models or wait 90 seconds for rate limits to clear.';
 }
 
 // =============================================================================
@@ -1434,6 +1470,7 @@ function getAgentSystemPrompt(agentId) {
   return `You are the ${persona.name}, ${persona.role} of ${state.company}, talking with ${state.owner}.
 Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
 Company: ${state.company} | Owner: ${state.owner}
+${process.env.GMAIL_ADDRESS ? `Company email: ${process.env.GMAIL_ADDRESS} — always use this exact address. Never invent email addresses.` : 'No company email configured — do not invent email addresses.'}
 ${profile ? profile.slice(0, 500) : ''}
 ${skillContext}
 ${AGENT_ACTION_REFERENCE}`;
@@ -1643,32 +1680,63 @@ async function logToNotion(decision) {
 // INTEGRATIONS STATUS endpoint
 // =============================================================================
 app.get('/api/integrations/status', (req, res) => {
-  // Accept both SUPABASE_KEY (written by configure.html) and SUPABASE_ANON_KEY
   const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-  // GitHub: accept GITHUB_TOKEN or fall back to gh CLI token
   let githubToken = process.env.GITHUB_TOKEN;
   if (!githubToken) {
     try { githubToken = require('child_process').execSync('gh auth token 2>/dev/null', { encoding: 'utf8' }).trim(); } catch(_) {}
   }
+  // Detect installed browsers (macOS)
+  const chromeInstalled = fs.existsSync('/Applications/Google Chrome.app') || fs.existsSync(`${process.env.HOME}/Applications/Google Chrome.app`);
+  const braveInstalled  = fs.existsSync('/Applications/Brave Browser.app') || fs.existsSync(`${process.env.HOME}/Applications/Brave Browser.app`);
+  const tandemInstalled = fs.existsSync('/Applications/Tandem.app') || fs.existsSync(`${process.env.HOME}/Applications/Tandem.app`);
+
   res.json({
+    // ── Communication ──────────────────────────────────────────────────────
     telegram:          !!process.env.TG_TOKEN,
     discord:           !!process.env.DISCORD_TOKEN,
     slack:             !!process.env.SLACK_BOT_TOKEN,
+    twilio:            !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+    hootsuite:         !!process.env.HOOTSUITE_ACCESS_TOKEN,
+    // ── Email & Google ─────────────────────────────────────────────────────
     gmail:             !!(process.env.GMAIL_ADDRESS && process.env.GMAIL_APP_PASSWORD),
-    // Google Suite: keys configured = oauth_ready. Token file = fully authed (Docs/Sheets/Calendar active)
     google_oauth_ready: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     google_suite:      !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && fs.existsSync(GOOGLE_TOKEN_PATH)),
+    google_drive:      !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    microsoft365:      !!process.env.MICROSOFT_CLIENT_ID,
+    onedrive:          !!process.env.MICROSOFT_CLIENT_ID,
+    // ── Storage ────────────────────────────────────────────────────────────
+    dropbox:           !!process.env.DROPBOX_ACCESS_TOKEN,
+    // ── Productivity ───────────────────────────────────────────────────────
     notion:            !!process.env.NOTION_TOKEN,
+    trello:            !!process.env.TRELLO_API_KEY,
+    monday:            !!process.env.MONDAY_API_KEY,
+    // ── CRM ────────────────────────────────────────────────────────────────
     hubspot:           !!process.env.HUBSPOT_API_KEY,
+    zoho_crm:          !!process.env.ZOHO_CRM_CLIENT_ID,
+    // ── Finance & Accounting ───────────────────────────────────────────────
     stripe:            !!process.env.STRIPE_API_KEY,
-    firecrawl:         !!process.env.FIRECRAWL_API_KEY,
-    perplexity:        !!process.env.PERPLEXITY_API_KEY,
+    xero:              !!process.env.XERO_CLIENT_ID,
+    quickbooks:        !!process.env.QUICKBOOKS_CLIENT_ID,
+    myob:              !!process.env.MYOB_CLIENT_ID,
+    // ── Data ───────────────────────────────────────────────────────────────
+    supabase:          !!(process.env.SUPABASE_URL && supabaseKey),
+    github:            !!(githubToken && process.env.GITHUB_REPO),
+    odoo:              !!process.env.ODOO_URL,
+    // ── Web Search ─────────────────────────────────────────────────────────
     brave_search:      !!process.env.BRAVE_API_KEY,
+    perplexity:        !!process.env.PERPLEXITY_API_KEY,
     tavily:            !!process.env.TAVILY_API_KEY,
     serpapi:           !!process.env.SERPAPI_KEY,
     google_cse:        !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
-    github:            !!(githubToken && process.env.GITHUB_REPO),
-    supabase:          !!(process.env.SUPABASE_URL && supabaseKey),
+    duckduckgo:        true, // always available, no key needed
+    // ── Web Fetch ──────────────────────────────────────────────────────────
+    firecrawl:         !!process.env.FIRECRAWL_API_KEY,
+    jina:              true, // always available, no key needed
+    // ── Browsers ───────────────────────────────────────────────────────────
+    chrome:            chromeInstalled,
+    brave_browser:     braveInstalled,
+    tandem:            tandemInstalled,
+    // ── Media ──────────────────────────────────────────────────────────────
     elevenlabs:        !!process.env.ELEVENLABS_API_KEY,
   });
 });
@@ -2077,6 +2145,28 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
     res.json({ agent: meta.name || req.params.id, category: meta.category, reply });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// =============================================================================
+// VOICE — ElevenLabs TTS (streams audio back as MP3)
+// =============================================================================
+app.post('/api/voice/speak', async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set. Add it in Settings.' });
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // default: Bella
+  try {
+    const r = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      { text: text.slice(0, 2500), model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } },
+      { headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, responseType: 'stream' }
+    );
+    res.set('Content-Type', 'audio/mpeg');
+    r.data.pipe(res);
+  } catch (e) {
+    res.status(500).json({ error: e.response?.data?.detail || e.message });
   }
 });
 

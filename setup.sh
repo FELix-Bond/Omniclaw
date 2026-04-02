@@ -212,6 +212,8 @@ else
   case "$OS" in
     macos) brew install node 2>/dev/null && ok "Node.js installed" || fail "Node.js install failed — install from nodejs.org" ;;
     linux|wsl)
+      echo -e "\n  ${YELLOW}⚠ PASSWORD PROMPT COMING — sudo is needed to install Node.js on Linux.${NC}"
+      echo -e "  ${YELLOW}  Enter your system password when prompted below.${NC}\n"
       curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - 2>/dev/null
       sudo apt-get install -y nodejs 2>/dev/null && ok "Node.js installed" || fail "Node.js install failed"
       ;;
