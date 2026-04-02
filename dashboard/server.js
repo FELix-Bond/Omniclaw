@@ -2262,6 +2262,37 @@ app.post('/api/openclaw/agents/:id/chat', async (req, res) => {
 });
 
 // =============================================================================
+// VOICE DIAGNOSE — test Groq TTS and return raw result for debugging
+// =============================================================================
+app.get('/api/voice/diagnose', async (req, res) => {
+  const results = {};
+  results.GROQ_API_KEY = process.env.GROQ_API_KEY ? '✓ set (' + process.env.GROQ_API_KEY.slice(0,8) + '...)' : '✗ not set';
+  results.VOICE_TTS_PROVIDER = process.env.VOICE_TTS_PROVIDER || '(auto)';
+  results.VOICE_GROQ_VOICE = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI (default)';
+  results.detectedProvider = getTTSProvider();
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+      const r = await axios.post(
+        'https://api.groq.com/openai/v1/audio/speech',
+        { model: 'playai-tts', voice, input: 'Test.', response_format: 'wav' },
+        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 15000 }
+      );
+      results.groqTTS = `✓ Working — ${r.data.byteLength} bytes returned`;
+    } catch(e) {
+      const err = e.response?.data
+        ? (Buffer.isBuffer(e.response.data) ? e.response.data.toString() : JSON.stringify(e.response.data))
+        : e.message;
+      results.groqTTS = `✗ Failed: ${err}`;
+      results.groqStatus = e.response?.status;
+    }
+  } else {
+    results.groqTTS = '✗ Skipped — no GROQ_API_KEY';
+  }
+  res.json(results);
+});
+
+// =============================================================================
 // VOICE — multi-provider TTS + Whisper STT
 // Provider priority: VOICE_TTS_PROVIDER env var, or auto-detect from keys
 // Providers: 'webspeech' (browser-native), 'groq', 'elevenlabs'

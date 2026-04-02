@@ -1509,9 +1509,13 @@ function speakBrowser(btn, text) {
   window.speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate = 1.05; utt.pitch = 1;
-  // Prefer a natural-sounding voice if available
+  // Prefer a natural-sounding male voice
   const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Samantha') || v.name.includes('Karen') || v.name.includes('Google UK English Female'));
+  const preferred = voices.find(v =>
+    v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('David') ||
+    v.name.includes('Tom') || v.name.includes('Google UK English Male') ||
+    v.name.includes('Google US English') || v.name.includes('Fred')
+  ) || voices.find(v => v.lang.startsWith('en') && !v.name.includes('Female'));
   if (preferred) utt.voice = preferred;
   btn._synth = true;
   btn.textContent = '⏹';
@@ -1570,7 +1574,12 @@ function stopMic() {
 function toggleMic(btn, targetInputId) {
   const input = document.getElementById(targetInputId);
   if (_micRecog) { stopMic(); return; }
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // SpeechRecognition requires HTTPS or localhost — fall back to MediaRecorder otherwise
+  const isSecure = window.isSecureContext ||
+    location.hostname === 'localhost' ||
+    location.hostname === '127.0.0.1';
+  const SpeechRec = isSecure ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   if (!SpeechRec) { recordAndTranscribe(btn, input); return; }
 
   _micBtn = btn;
@@ -1591,7 +1600,6 @@ function toggleMic(btn, targetInputId) {
     input.value = final || interim;
 
     if (final) {
-      // 3-second silence window — auto-send if voice mode
       if (_voiceMode && input.id === 'chatInput') {
         _sendTimer = setTimeout(() => {
           stopMic();
@@ -1606,7 +1614,6 @@ function toggleMic(btn, targetInputId) {
     micSetActive(btn, false);
     _micRecog = null;
     _micBtn = null;
-    // If there's text in the input and voice mode is on, auto-send
     if (_voiceMode && input.id === 'chatInput' && input.value.trim() && !_sendTimer) {
       _voiceSpeakNext = true;
       setTimeout(sendChat, 500);
@@ -1616,17 +1623,24 @@ function toggleMic(btn, targetInputId) {
   rec.onerror = (e) => {
     console.warn('STT error:', e.error);
     stopMic();
-    if (e.error === 'not-allowed') {
-      const status = document.getElementById('voiceTestStatus');
-      if (status) { status.textContent = '🎤 Mic access denied — check browser permissions'; setTimeout(() => { status.textContent = ''; }, 4000); }
-      else alert('Microphone access denied. Please allow microphone access in your browser settings.');
-    } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
-      console.warn('Mic error:', e.error);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      // Permission denied or not available — fall back to Groq Whisper via MediaRecorder
+      console.warn('[MIC] SpeechRecognition blocked, falling back to Groq Whisper');
+      recordAndTranscribe(btn, input);
     }
+    // 'aborted' and 'no-speech' are normal — ignore
   };
 
-  rec.start();
-  _micRecog = rec;
+  try {
+    rec.start();
+    _micRecog = rec;
+  } catch(startErr) {
+    // start() can throw synchronously on some browsers
+    console.warn('[MIC] rec.start() failed:', startErr.message);
+    _micRecog = null;
+    micSetActive(btn, false);
+    recordAndTranscribe(btn, input);
+  }
 }
 
 async function recordAndTranscribe(btn, input) {
@@ -2187,17 +2201,23 @@ async function testVoiceOutput(btn) {
     if (ct.includes('application/json')) {
       const d = await r.json();
       if (d.browser) {
-        if (status) status.textContent = '🌐 Using browser Web Speech API';
-        speakBrowser({ textContent: '▶', style: {}, _synth: false }, d.text || 'Voice test complete.');
+        // Groq TTS failed — show the real reason, not just "browser speech"
+        if (d.error) {
+          if (status) status.textContent = `⚠ Groq TTS failed: ${d.error} — using browser fallback`;
+        } else {
+          if (status) status.textContent = `🌐 No TTS provider configured — using browser speech (set VOICE_TTS_PROVIDER=groq above)`;
+        }
+        const fbBtn = { textContent: '▶', style: {}, _synth: false };
+        speakBrowser(fbBtn, d.text || 'Voice test. Groq TTS is not available, using browser speech.');
       } else if (d.error) {
         if (status) status.textContent = '⚠ ' + d.error;
       }
     } else {
       const blob = await r.blob();
       const audio = new Audio(URL.createObjectURL(blob));
-      if (status) status.textContent = '🎵 Playing via ' + (provider || 'auto');
+      if (status) status.textContent = `🎵 Playing ${voice} via ${provider || 'groq'}`;
       audio.play();
-      audio.onended = () => { if (status) status.textContent = '✓ Done'; };
+      audio.onended = () => { if (status) status.textContent = '✓ Voice working'; };
     }
   } catch(e) { if (status) status.textContent = '✗ ' + e.message; }
   btn.disabled = false; btn.textContent = '▶ Test voice';
