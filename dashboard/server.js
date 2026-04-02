@@ -496,9 +496,11 @@ ${process.env.GMAIL_ADDRESS ? `- Company email address: ${process.env.GMAIL_ADDR
 - Configured integrations you CAN use right now:${process.env.TG_TOKEN ? ` Telegram (send updates with [[ACTION:telegram_send|message]], chat_id=${process.env.TG_CHAT_ID||'not set'}${!process.env.TG_CHAT_ID?' — TG_CHAT_ID missing, cannot send proactively':''});` : ' Telegram: NOT configured;'}${process.env.SLACK_BOT_TOKEN ? ` Slack ([[ACTION:slack_send|#channel|message]]);` : ''}${process.env.NOTION_TOKEN ? ` Notion ([[ACTION:notion_create|Title|Content]]);` : ''}${process.env.STRIPE_SECRET_KEY ? ` Stripe ([[ACTION:stripe_revenue]] [[ACTION:stripe_create_invoice|email|cents|desc]]);` : ''}${process.env.SUPABASE_URL ? ` Supabase ([[ACTION:supabase_query|table|filter]]);` : ''}${(process.env.BRAVE_API_KEY||process.env.BRAVE_SEARCH_API_KEY) ? ` Web search ([[ACTION:web_search|query]]);` : ''}${process.env.GITHUB_TOKEN ? ` GitHub ([[ACTION:github_push|msg]] [[ACTION:github_create_issue|title|body]]);` : ''}
 - If an integration is NOT listed above as configured, do NOT attempt to use it and do NOT pretend it exists.
 
+${getAgentRosterContext()}
+
 ${AGENT_ACTION_REFERENCE}
 
-PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it.
+PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it. When asked about your team, list them by name and role — you know exactly who you have. Never say you can't see other agents.
 
 Company: ${state.company} | Owner: ${state.owner}
 ${ownerProfile ? '\nOwner context:\n' + ownerProfile.slice(0, 800) : ''}
@@ -797,6 +799,39 @@ function shellExec(command) {
   } catch (e) { return `Exit ${e.status || 1}: ${(e.stderr || e.message || '').slice(0, 2000)}`; }
 }
 
+// ── Build live agent roster for system prompts ─────────────────────────────
+function getAgentRosterContext() {
+  const csuite = Object.entries(AGENT_PERSONAS)
+    .filter(([id]) => id !== 'CEO')
+    .map(([id, p]) => `  ${p.emoji} ${id} — ${p.name} (${p.role}): dispatch with [[ACTION:agent_dispatch|${id}|your task]]`)
+    .join('\n');
+
+  const deployedCustom = Object.values(state.agents)
+    .filter(a => a.id && a.id !== 'CEO' && !AGENT_PERSONAS[a.id])
+    .map(a => `  🤖 ${a.id} — ${a.name || a.id}: ${a.role || ''} (status: ${a.currentTask || 'Idle'})`)
+    .join('\n');
+
+  const subCats = {};
+  Object.entries(SUBAGENT_DEFINITIONS || {}).forEach(([id, d]) => {
+    if (!subCats[d.cat]) subCats[d.cat] = [];
+    subCats[d.cat].push(`${d.icon||'•'} ${d.label} (${id})`);
+  });
+  const subList = Object.entries(subCats).map(([cat, items]) =>
+    `  ${cat}: ${items.slice(0,4).join(', ')}${items.length > 4 ? ` +${items.length-4} more` : ''}`
+  ).join('\n');
+  const totalSubs = Object.keys(SUBAGENT_DEFINITIONS || {}).length;
+
+  return `YOUR AGENT TEAM — dispatch any of these directly from your reply:
+
+C-SUITE (${Object.keys(AGENT_PERSONAS).length - 1} executives):
+${csuite}
+
+SPECIALIST SUBAGENT POOL (${totalSubs}+ experts — dispatch with [[ACTION:subagent|agent-id|task]]):
+${subList}
+${deployedCustom ? `\nDEPLOYED CUSTOM AGENTS:\n${deployedCustom}` : ''}
+AGENT DISPATCH IS REAL: when you use [[ACTION:agent_dispatch|CFO|question]] or [[ACTION:subagent|seo-analyst|task]], the server actually calls that agent and returns its response for you to synthesise. Use this proactively — you are the orchestrator.`;
+}
+
 // ── Action reference injected into every agent system prompt ───────────────
 const AGENT_ACTION_REFERENCE = `
 ACTIONS — you have real execution capabilities. Embed these inline in your reply and the server runs them immediately. Use them proactively — don't describe what you'd do, just DO IT.
@@ -811,8 +846,9 @@ STRIPE:   [[ACTION:stripe_create_invoice|email|amount_cents|Description]] [[ACTI
 GITHUB:   [[ACTION:github_push|Commit message]] [[ACTION:github_create_issue|Title|Body]]
 SUPABASE: [[ACTION:supabase_query|table|{"col":"val"}]] [[ACTION:supabase_insert|table|{"col":"val"}]]
 SHELL:    [[ACTION:shell|any shell command]]
+AGENTS:   [[ACTION:agent_dispatch|CFO|What is our burn rate?]] [[ACTION:agent_dispatch|CTO|Review this]] [[ACTION:subagent|seo-analyst|Audit site]] [[ACTION:agent_broadcast|Message to all agents]]
 
-Chain multiple actions in one reply. Data-returning actions (web_search, web_fetch, shell, hubspot_get_deals, stripe_revenue, supabase_query, memory_read, file_read) return results that you will see and synthesise into your response.`;
+Chain multiple actions in one reply. Data-returning actions (web_search, web_fetch, shell, hubspot_get_deals, stripe_revenue, supabase_query, memory_read, file_read, agent_dispatch, subagent, agent_broadcast) return results you will see and synthesise into your response.`;
 
 // ── Main action executor ───────────────────────────────────────────────────
 async function executeActions(reply, systemPromptForSynthesis) {
@@ -1013,6 +1049,66 @@ async function executeActions(reply, systemPromptForSynthesis) {
           const cmd = parts.slice(1).join('|');
           data = shellExec(cmd);
           label = `🖥️ \`${cmd}\``; isData = true; break;
+        }
+
+        // ── Agent Dispatch — call C-Suite agent and get response ──────
+        case 'agent_dispatch': {
+          const agentId = (parts[1] || '').toUpperCase();
+          const task = parts.slice(2).join('|');
+          if (!task) { label = `⚠️ agent_dispatch requires a task: [[ACTION:agent_dispatch|CFO|task here]]`; break; }
+          const persona = AGENT_PERSONAS[agentId];
+          if (!persona) {
+            label = `⚠️ Agent "${agentId}" not found. Available: ${Object.keys(AGENT_PERSONAS).filter(k=>k!=='CEO').join(', ')}`;
+            break;
+          }
+          const agentSysPrompt = getAgentSystemPrompt(agentId);
+          const agentReply = await callAI([{ role: 'user', content: task }], agentSysPrompt);
+          data = agentReply;
+          label = `${persona.emoji} ${persona.name} responded`;
+          isData = true;
+          // Emit to dashboard so user sees the agent responding
+          io.emit('chat:message', { role: 'assistant', content: agentReply, source: `${persona.emoji} ${persona.name}`, agentId, timestamp: new Date().toISOString() });
+          if (state.agents[agentId]) { state.agents[agentId].lastActive = new Date().toISOString(); state.agents[agentId].currentTask = task.slice(0, 60); io.emit('agents:update', Object.values(state.agents)); }
+          break;
+        }
+
+        // ── Subagent Dispatch — call specialist from the 130+ pool ────
+        case 'subagent': {
+          const subId = parts[1];
+          const task = parts.slice(2).join('|');
+          if (!task) { label = `⚠️ subagent requires a task: [[ACTION:subagent|seo-analyst|task here]]`; break; }
+          const def = (SUBAGENT_DEFINITIONS || {})[subId];
+          if (!def) {
+            const available = Object.keys(SUBAGENT_DEFINITIONS || {}).slice(0, 10).join(', ');
+            label = `⚠️ Subagent "${subId}" not found. Sample IDs: ${available}`;
+            break;
+          }
+          const subSysPrompt = `${def.prompt}\n\n${AGENT_ACTION_REFERENCE}`;
+          const subReply = await callAI([{ role: 'user', content: task }], subSysPrompt);
+          data = subReply;
+          label = `${def.icon||'🤖'} ${def.label} responded`;
+          isData = true;
+          break;
+        }
+
+        // ── Agent Broadcast — send message to all C-Suite agents ──────
+        case 'agent_broadcast': {
+          const message = parts.slice(1).join('|');
+          if (!message) { label = '⚠️ agent_broadcast requires a message'; break; }
+          const responses = [];
+          for (const [agentId, persona] of Object.entries(AGENT_PERSONAS)) {
+            if (agentId === 'CEO') continue;
+            try {
+              const aSysPrompt = getAgentSystemPrompt(agentId);
+              const aReply = await callAI([{ role: 'user', content: message }], aSysPrompt);
+              responses.push(`${persona.emoji} **${persona.name}:** ${aReply.slice(0, 400)}`);
+              io.emit('chat:message', { role: 'assistant', content: aReply, source: `${persona.emoji} ${persona.name}`, agentId, timestamp: new Date().toISOString() });
+            } catch(e) { responses.push(`${persona.emoji} ${persona.name}: (unavailable)`); }
+          }
+          data = responses.join('\n\n');
+          label = `📢 Broadcast to ${responses.length} agents`;
+          isData = true;
+          break;
         }
 
         default:
