@@ -89,6 +89,19 @@
   .widget-card:hover { box-shadow: 0 0 0 1px var(--accent); }
   .widget-card:active { cursor: grabbing; }
 
+  /* LISTENING BUBBLE */
+  #listeningBubble { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(91,141,238,0.1); border:1px solid rgba(91,141,238,0.3); border-radius:20px; font-size:0.8rem; color:var(--accent); margin-bottom:8px; }
+  #listeningBubble.active { display:flex; animation: listenPulse 1.8s ease-in-out infinite; }
+  @keyframes listenPulse { 0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(91,141,238,0.4); } 50% { opacity:0.85; box-shadow:0 0 0 6px rgba(91,141,238,0); } }
+  .listen-bars { display:flex; align-items:flex-end; gap:2px; height:14px; }
+  .listen-bar { width:3px; background:var(--accent); border-radius:2px; animation:barBounce 0.6s ease-in-out infinite; }
+  .listen-bar:nth-child(1) { height:4px; animation-delay:0s; }
+  .listen-bar:nth-child(2) { height:10px; animation-delay:0.1s; }
+  .listen-bar:nth-child(3) { height:7px; animation-delay:0.2s; }
+  .listen-bar:nth-child(4) { height:12px; animation-delay:0.15s; }
+  .listen-bar:nth-child(5) { height:5px; animation-delay:0.05s; }
+  @keyframes barBounce { 0%,100% { transform:scaleY(1); } 50% { transform:scaleY(1.8); } }
+
   /* DECISIONS TABLE */
   .dec-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   .dec-table th { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -262,8 +275,6 @@
         <div class="metric-card"><div class="m-label">Heartbeat</div><div class="m-val" id="m-heartbeat">—</div><div class="m-sub">wake interval</div></div>
       </div>
       <div id="widgetArea" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px"></div>
-      <div class="section-title">C-Suite Overview</div>
-      <div class="agents-grid" id="dashAgentGrid"></div>
       <div class="section-title">Recent Decisions</div>
       <div class="card">
         <table class="dec-table" id="recentDecTable">
@@ -402,10 +413,14 @@
           <div class="thinking-dots"><span></span><span></span><span></span></div>
           <span style="font-size:0.8rem;color:var(--muted)">Thinking...</span>
         </div>
+        <div id="listeningBubble">
+          <div class="listen-bars"><span class="listen-bar"></span><span class="listen-bar"></span><span class="listen-bar"></span><span class="listen-bar"></span><span class="listen-bar"></span></div>
+          <span id="listeningLabel">Listening…</span>
+        </div>
         <div class="chat-input-row" style="position:relative">
           <input type="text" id="chatInput" placeholder="Ask your CEO AI anything..." onkeydown="if(event.key==='Enter')sendChat()">
           <button id="chatMicBtn" onclick="toggleMic(this,'chatInput')" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 10px;cursor:pointer;font-size:1rem;color:var(--muted);flex-shrink:0;height:40px">🎤</button>
-          <button id="voiceModeBtn" onclick="toggleVoiceMode()" title="Voice mode — speak, hear reply" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 8px;cursor:pointer;font-size:0.8rem;color:var(--muted);flex-shrink:0;height:40px" title="Toggle voice mode">🔇</button>
+          <button id="voiceModeBtn" onclick="toggleVoiceMode()" title="Voice mode — speak, hear reply" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 8px;cursor:pointer;font-size:0.8rem;color:var(--muted);flex-shrink:0;height:40px">🔇</button>
           <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
         </div>
       </div>
@@ -1383,6 +1398,7 @@ socket.on('init', (data) => {
   renderDecisions(decisionData.slice(-10), 'recentDecTable');
   renderDecisions(decisionData, 'fullDecTable');
   renderHeartbeats();
+  renderWidgets(); // load widgets on initial page load
 });
 
 socket.on('agents:update', (agents) => {
@@ -1547,7 +1563,7 @@ let _micRecog = null;
 let _micBtn = null;          // reference to active mic button
 let _sendTimer = null;       // silence → send timer
 
-function micSetActive(btn, active) {
+function micSetActive(btn, active, label) {
   if (!btn) return;
   if (active) {
     btn.textContent = '🎙️';
@@ -1561,6 +1577,14 @@ function micSetActive(btn, active) {
     btn.style.borderColor = 'var(--border)';
     btn.style.boxShadow = 'none';
     btn.title = 'Voice input';
+  }
+  // Show/hide the listening bubble (only for main chat mic)
+  if (btn.id === 'chatMicBtn') {
+    const bubble = document.getElementById('listeningBubble');
+    const lbl = document.getElementById('listeningLabel');
+    if (bubble) bubble.classList.toggle('active', active);
+    if (lbl && label) lbl.textContent = label;
+    else if (lbl) lbl.textContent = active ? 'Listening…' : 'Listening…';
   }
 }
 
@@ -1646,31 +1670,78 @@ function toggleMic(btn, targetInputId) {
 async function recordAndTranscribe(btn, input) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
+    // Silence detection via AudioContext
+    let audioCtx, analyser, silenceTimer = null, hasSpoken = false;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+    } catch(_) { /* AudioContext not available — fall back to manual stop */ }
+
+    const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
     const chunks = [];
     micSetActive(btn, true);
     _micBtn = btn;
-    recorder.ondataavailable = e => chunks.push(e.data);
+
+    // Silence detection loop — stops after 3s of quiet after user has spoken
+    const silenceData = analyser ? new Uint8Array(analyser.fftSize) : null;
+    const silenceInterval = silenceData ? setInterval(() => {
+      analyser.getByteTimeDomainData(silenceData);
+      const level = Math.max(...silenceData.map(v => Math.abs(v - 128)));
+      if (level > 12) {
+        hasSpoken = true;
+        clearTimeout(silenceTimer); silenceTimer = null;
+        micSetActive(btn, true, 'Listening…');
+      } else if (hasSpoken && !silenceTimer) {
+        micSetActive(btn, true, 'Processing in 3s…');
+        silenceTimer = setTimeout(() => { recorder.stop(); }, 3000);
+      }
+    }, 120) : null;
+
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = async () => {
+      clearInterval(silenceInterval); clearTimeout(silenceTimer);
+      if (audioCtx) audioCtx.close().catch(() => {});
       stream.getTracks().forEach(t => t.stop());
       micSetActive(btn, false); _micBtn = null;
       btn.textContent = '⏳';
-      const blob = new Blob(chunks, { type: 'audio/webm' });
-      const form = new FormData(); form.append('audio', blob, 'voice.webm');
+      btn.onclick = () => toggleMic(btn, input.id); // restore onclick
+      if (!chunks.length) { btn.textContent = '🎤'; return; }
+      const mimeType = recorder.mimeType || 'audio/webm';
+      const blob = new Blob(chunks, { type: mimeType });
+      const ext = mimeType.includes('ogg') ? 'voice.ogg' : 'voice.webm';
+      const form = new FormData(); form.append('audio', blob, ext);
       try {
         const r = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
         const d = await r.json();
         if (d.text) {
           input.value = d.text;
           if (_voiceMode && input.id === 'chatInput') { _voiceSpeakNext = true; setTimeout(sendChat, 500); }
+          else if (input.id === 'chatInput' && d.text.trim()) {
+            // Non-voice-mode single shot: auto-send after mic transcription
+            setTimeout(sendChat, 400);
+          }
+        } else if (d.error) {
+          console.warn('[MIC] Transcription error:', d.error);
+          input.placeholder = '⚠ Transcription failed — check GROQ_API_KEY';
+          setTimeout(() => { input.placeholder = 'Ask your CEO AI anything...'; }, 3000);
         }
       } catch(e) { console.warn('Transcription error:', e.message); }
       btn.textContent = '🎤';
     };
-    recorder.start();
-    const stopTimer = setTimeout(() => recorder.stop(), 45000);
-    btn.onclick = () => { clearTimeout(stopTimer); recorder.stop(); btn.onclick = () => toggleMic(btn, input.id); };
-  } catch(e) { alert('Microphone access denied: ' + e.message); micSetActive(btn, false); }
+
+    recorder.start(250); // collect in 250ms chunks for reliable stop
+    const maxTimer = setTimeout(() => recorder.stop(), 60000);
+    btn.onclick = () => { clearTimeout(maxTimer); clearInterval(silenceInterval); clearTimeout(silenceTimer); recorder.stop(); };
+  } catch(e) {
+    micSetActive(btn, false);
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      alert('Microphone access denied. Please click the 🔒 or camera icon in your browser address bar and allow microphone access, then try again.');
+    } else {
+      console.warn('Mic error:', e.message);
+    }
+  }
 }
 
 function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }

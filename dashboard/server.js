@@ -1453,48 +1453,55 @@ function stripForSpeech(text) {
 }
 
 // Send a voice message back to Telegram using Groq TTS
+// Generate TTS audio buffer using best available provider
+async function generateTTSBuffer(text) {
+  const clean = stripForSpeech(text);
+
+  // 1. Try OpenAI TTS (most reliable, onyx = male)
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const r = await axios.post(
+        'https://api.openai.com/v1/audio/speech',
+        { model: 'tts-1', voice: 'onyx', input: clean.slice(0, 4096), response_format: 'mp3' },
+        { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+      );
+      console.log('[TTS] OpenAI TTS success');
+      return { buffer: Buffer.from(r.data), ext: 'mp3', mime: 'audio/mpeg' };
+    } catch(e) { console.log('[TTS] OpenAI failed:', e.response?.data?.error?.message || e.message); }
+  }
+
+  // 2. Try Groq PlayAI TTS
+  if (process.env.GROQ_API_KEY) {
+    for (const fmt of ['wav', 'mp3']) {
+      try {
+        const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+        const r = await axios.post(
+          'https://api.groq.com/openai/v1/audio/speech',
+          { model: 'playai-tts', voice, input: clean.slice(0, 2000), response_format: fmt },
+          { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+        );
+        console.log(`[TTS] Groq TTS success (${fmt})`);
+        return { buffer: Buffer.from(r.data), ext: fmt, mime: fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav' };
+      } catch(e) { console.log(`[TTS] Groq ${fmt} failed:`, e.response?.data?.error?.message || e.message); }
+    }
+  }
+
+  return null; // all providers failed
+}
+
 async function sendTelegramVoice(chatId, text) {
-  const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return false;
+  const audio = await generateTTSBuffer(text);
+  if (!audio) { console.log('[TG] No TTS provider available — sending text instead'); return false; }
   try {
-    const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
-    const audioResp = await axios.post(
-      'https://api.groq.com/openai/v1/audio/speech',
-      { model: 'playai-tts', voice, input: stripForSpeech(text), response_format: 'wav' },
-      { headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
-    );
-    const FormData = require('form-data');
-    const form = new FormData();
+    const FD = require('form-data');
+    const form = new FD();
     form.append('chat_id', String(chatId));
-    form.append('voice', Buffer.from(audioResp.data), { filename: 'reply.wav', contentType: 'audio/wav' });
+    form.append('voice', audio.buffer, { filename: `reply.${audio.ext}`, contentType: audio.mime });
     await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendVoice`, form, {
       headers: form.getHeaders(), timeout: 30000,
     });
     return true;
-  } catch (e) {
-    console.log('[TG] Voice reply failed (wav):', e.response?.data?.error?.message || e.message);
-    // Retry with mp3 format
-    try {
-      const groqKey2 = process.env.GROQ_API_KEY;
-      const voice2 = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
-      const audioResp2 = await axios.post(
-        'https://api.groq.com/openai/v1/audio/speech',
-        { model: 'playai-tts', voice: voice2, input: stripForSpeech(text), response_format: 'mp3' },
-        { headers: { Authorization: `Bearer ${groqKey2}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
-      );
-      const FormData2 = require('form-data');
-      const form2 = new FormData2();
-      form2.append('chat_id', String(chatId));
-      form2.append('voice', Buffer.from(audioResp2.data), { filename: 'reply.mp3', contentType: 'audio/mpeg' });
-      await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendVoice`, form2, {
-        headers: form2.getHeaders(), timeout: 30000,
-      });
-      return true;
-    } catch(e2) {
-      console.log('[TG] Voice reply mp3 also failed:', e2.response?.data?.error?.message || e2.message);
-    }
-    return false;
-  }
+  } catch(e) { console.log('[TG] sendVoice upload failed:', e.response?.data || e.message); return false; }
 }
 
 async function sendTelegram(chatId, text, parse_mode) {
@@ -2321,32 +2328,12 @@ app.post('/api/voice/speak', async (req, res) => {
   const provider = reqProvider || getTTSProvider();
 
   // Browser-native: tell client to use Web Speech API
-  if (provider === 'webspeech') {
-    return res.json({ browser: true, text });
-  }
+  if (provider === 'webspeech') return res.json({ browser: true, text });
 
-  // Groq TTS (uses existing GROQ_API_KEY — no extra cost)
-  if (provider === 'groq') {
-    if (!process.env.GROQ_API_KEY) return res.status(503).json({ error: 'GROQ_API_KEY not set', browser: true, text });
-    const voice = req.body.voice || process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
-    try {
-      const r = await axios.post(
-        'https://api.groq.com/openai/v1/audio/speech',
-        { model: 'playai-tts', voice, input: text.slice(0, 2000), response_format: 'wav' },
-        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'stream' }
-      );
-      res.set('Content-Type', 'audio/wav');
-      return r.data.pipe(res);
-    } catch (e) {
-      // Gracefully fall back to browser TTS if Groq fails
-      return res.json({ browser: true, text, error: e.response?.data?.error?.message || e.message });
-    }
-  }
-
-  // ElevenLabs TTS
+  // ElevenLabs — if explicitly selected
   if (provider === 'elevenlabs') {
-    if (!process.env.ELEVENLABS_API_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set', browser: true, text });
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Bella
+    if (!process.env.ELEVENLABS_API_KEY) return res.json({ browser: true, text, error: 'ELEVENLABS_API_KEY not set' });
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
     try {
       const r = await axios.post(
         `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -2355,12 +2342,18 @@ app.post('/api/voice/speak', async (req, res) => {
       );
       res.set('Content-Type', 'audio/mpeg');
       return r.data.pipe(res);
-    } catch (e) {
-      return res.json({ browser: true, text, error: e.response?.data?.detail || e.message });
-    }
+    } catch(e) { return res.json({ browser: true, text, error: e.response?.data?.detail || e.message }); }
   }
 
-  res.json({ browser: true, text });
+  // Auto / Groq / OpenAI — use shared generateTTSBuffer() which tries both
+  const audio = await generateTTSBuffer(text);
+  if (audio) {
+    res.set('Content-Type', audio.mime);
+    return res.send(audio.buffer);
+  }
+
+  // All server TTS failed — tell client to use browser speech
+  res.json({ browser: true, text, error: 'No working TTS provider — check OpenAI or Groq key, or set VOICE_TTS_PROVIDER=webspeech' });
 });
 
 // Groq Whisper STT — transcribe uploaded audio
