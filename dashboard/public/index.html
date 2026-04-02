@@ -193,7 +193,13 @@
     <div class="nav-item" onclick="showPanel('openclaw')"><span class="nav-icon">🦾</span> OpenClaw</div>
     <div class="nav-item" onclick="showPanel('browser')"><span class="nav-icon">🌐</span> Browser</div>
     <div class="nav-item" onclick="showPanel('github')" style="display:none" id="nav-github-hidden"></div>
-    <a class="nav-link" href="https://github.com/FELix-Bond/Omniclaw" target="_blank"><span class="nav-icon">🔗</span> GitHub ↗</a>
+    <div class="nav-item" onclick="showPanel('ideas')" id="nav-ideas" style="position:relative">
+      <span class="nav-icon">💡</span> Ideas
+      <span id="ideaCountBadge" style="display:none;position:absolute;top:6px;right:12px;background:var(--yellow);color:#000;border-radius:10px;font-size:0.65rem;font-weight:700;padding:1px 5px;min-width:16px;text-align:center">!</span>
+    </div>
+  </nav>
+  <div style="flex:1"></div>
+  <nav class="sidebar-nav" style="padding-bottom:0">
     <div class="nav-item" onclick="showPanel('settings')" id="nav-settings" style="position:relative">
       <span class="nav-icon">⚙️</span> Settings
       <span id="errorBadge" style="display:none;position:absolute;top:6px;right:12px;background:var(--red);color:#fff;border-radius:10px;font-size:0.65rem;font-weight:700;padding:1px 5px;min-width:16px;text-align:center">0</span>
@@ -226,6 +232,26 @@
 
     <!-- DASHBOARD PANEL -->
     <div class="panel active" id="panel-dashboard">
+      <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px;gap:8px">
+        <button onclick="runImprovementNow()" title="Run overnight improvement sweep now" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.75rem;color:var(--muted)">🌙 Improve</button>
+        <button onclick="openWidgetConfig()" title="Configure dashboard widgets" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.75rem;color:var(--muted)">⚙️ Widgets</button>
+      </div>
+      <!-- Widget Config Modal -->
+      <div id="widgetModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:none;align-items:center;justify-content:center">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="margin:0">⚙️ Dashboard Widgets</h3>
+            <button onclick="closeWidgetConfig()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted)">✕</button>
+          </div>
+          <p style="font-size:0.82rem;color:var(--muted);margin:0 0 16px">Toggle widgets on/off. You can also ask the CEO to build custom widgets for your linked finance package, analytics, or anything you need.</p>
+          <div id="widgetList" style="display:grid;gap:8px"></div>
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <input type="text" id="customWidgetInput" placeholder="Ask CEO to build a custom widget..." style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:0.82rem;outline:none">
+            <button onclick="askCEOWidget()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:0.82rem">Ask</button>
+          </div>
+          <button onclick="saveWidgetConfig()" style="width:100%;margin-top:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Save</button>
+        </div>
+      </div>
       <div class="metrics-row">
         <div class="metric-card"><div class="m-label">Active Agents</div><div class="m-val" id="m-agents">—</div><div class="m-sub">C-Suite members</div></div>
         <div class="metric-card"><div class="m-label">Decisions Today</div><div class="m-val" id="m-decisions">0</div><div class="m-sub">executive decisions</div></div>
@@ -372,9 +398,10 @@
           <div class="thinking-dots"><span></span><span></span><span></span></div>
           <span style="font-size:0.8rem;color:var(--muted)">Thinking...</span>
         </div>
-        <div class="chat-input-row">
-          <button id="chatMicBtn" onclick="toggleMic(this,'chatInput')" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 12px;cursor:pointer;font-size:1rem;color:var(--muted);flex-shrink:0;height:40px">🎤</button>
+        <div class="chat-input-row" style="position:relative">
           <input type="text" id="chatInput" placeholder="Ask your CEO AI anything..." onkeydown="if(event.key==='Enter')sendChat()">
+          <button id="chatMicBtn" onclick="toggleMic(this,'chatInput')" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 10px;cursor:pointer;font-size:1rem;color:var(--muted);flex-shrink:0;height:40px">🎤</button>
+          <button id="voiceModeBtn" onclick="toggleVoiceMode()" title="Voice mode — speak, hear reply" style="background:none;border:1px solid var(--border);border-radius:8px;padding:0 8px;cursor:pointer;font-size:0.8rem;color:var(--muted);flex-shrink:0;height:40px" title="Toggle voice mode">🔇</button>
           <button class="chat-send" id="chatSendBtn" onclick="sendChat()">Send</button>
         </div>
       </div>
@@ -552,6 +579,26 @@
             <div id="llmProviders" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
           </div>
 
+          <!-- OLLAMA LOCAL -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div style="font-weight:700">🖥️ Ollama — Local Models</div>
+              <button onclick="loadOllamaModels()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;color:var(--text)">Refresh</button>
+            </div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Run AI models 100% locally, for free. <a href="https://ollama.com" target="_blank" style="color:var(--accent)">Download Ollama →</a> then pull a model: <code style="font-size:0.76rem">ollama pull llama3.2</code></p>
+            <div id="ollamaStatus" style="font-size:0.82rem;color:var(--muted);margin-bottom:8px">Checking...</div>
+            <div id="ollamaModelList" style="display:grid;grid-template-columns:1fr 1fr;gap:6px"></div>
+            <div style="margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:6px">PULL A NEW MODEL</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                ${['llama3.2','llama3.1:8b','mistral','gemma2:9b','phi3','codellama','deepseek-r1','qwen2.5'].map(m =>
+                  `<button onclick="ollamaPull('${m}')" style="font-size:0.73rem;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer">${m}</button>`
+                ).join('')}
+              </div>
+              <div id="ollamaPullStatus" style="font-size:0.78rem;color:var(--muted);margin-top:6px"></div>
+            </div>
+          </div>
+
           <!-- VOICE CONFIG -->
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px" id="voiceConfigCard">
             <div style="font-weight:700;margin-bottom:4px">🎙️ Voice</div>
@@ -586,7 +633,8 @@
               <div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
                 <div style="font-size:0.85rem;font-weight:600;margin-bottom:6px">Microphone (STT)</div>
                 <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">🎤 button appears in Chat and Agent Chat inputs. Uses Web Speech API in Chrome/Edge (free). Falls back to Groq Whisper for other browsers. Telegram voice messages are auto-transcribed using Groq Whisper.</div>
-                <button onclick="speakMessage({textContent:'🔊',style:{}}, 'Hello! Voice is working correctly.')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:0.8rem">Test voice output</button>
+                <button id="voiceTestBtn" onclick="testVoiceOutput(this)" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:0.8rem">▶ Test voice</button>
+                <span id="voiceTestStatus" style="font-size:0.75rem;color:var(--muted);margin-left:8px"></span>
               </div>
             </div>
           </div>
@@ -635,6 +683,27 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- IDEAS PANEL -->
+    <div class="panel" id="panel-ideas">
+      <div style="max-width:860px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <h3 style="margin:0">💡 Ideas & Suggestions</h3>
+          <button onclick="loadIdeas(true)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem;color:var(--text)">↻ Refresh</button>
+        </div>
+        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 20px">Your CIO analyses your setup daily and suggests high-value improvements. Say yes to implement, or dismiss to skip.</p>
+        <div id="ideasList" style="display:grid;gap:12px">
+          <div style="color:var(--muted);font-size:0.85rem">Loading suggestions...</div>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+          <div style="font-weight:600;margin-bottom:6px;font-size:0.88rem">💬 Ask for a custom idea</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="customIdeaInput" placeholder="e.g. build a daily revenue dashboard..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:0.85rem;outline:none" onkeydown="if(event.key==='Enter')askCustomIdea()">
+            <button onclick="askCustomIdea()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600">Ask CEO</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -760,7 +829,7 @@ function showPanel(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + id)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => { if (n.textContent.toLowerCase().includes(id.slice(0,4))) n.classList.add('active'); });
-  const titles = { dashboard:'Dashboard', agents:'C-Suite Agents', decisions:'Decision Engine', orgchart:'Org Chart', github:'GitHub Integration', heartbeat:'Heartbeat Monitor', memory:'Agent Memory', chat:'Chat with CEO AI', skills:'Skill Pool', integrations:'Integrations', agentpool:'Agent Pool — 187 Specialists', agentchat:'Agent Chat', openclaw:'OpenClaw Engine', browser:'Browser', settings:'Settings' };
+  const titles = { dashboard:'Dashboard', agents:'C-Suite Agents', decisions:'Decision Engine', orgchart:'Org Chart', github:'GitHub Integration', heartbeat:'Heartbeat Monitor', memory:'Agent Memory', chat:'Chat with CEO AI', skills:'Skill Pool', integrations:'Integrations', agentpool:'Agent Pool — 187 Specialists', agentchat:'Agent Chat', openclaw:'OpenClaw Engine', browser:'Browser', settings:'Settings', ideas:'Ideas & Suggestions' };
   document.getElementById('panelTitle').textContent = titles[id] || id;
   if (id === 'github') refreshGithub();
   if (id === 'chat' && document.getElementById('chatMessages').children.length <= 1) loadChatHistory();
@@ -769,6 +838,7 @@ function showPanel(id) {
   if (id === 'agentchat') initAgentChatTabs();
   if (id === 'openclaw') loadOpenclawStatus();
   if (id === 'settings') loadSettings();
+  if (id === 'ideas') loadIdeas();
   // Memory and Integrations are now tabs inside Settings
   if (id === 'memory') { showPanel('settings'); setTimeout(() => switchSettingsTab('memory', document.querySelector('.settings-tab:nth-child(4)')), 50); return; }
   if (id === 'integrations') { showPanel('settings'); setTimeout(() => switchSettingsTab('integrations', document.querySelector('.settings-tab:nth-child(3)')), 50); return; }
@@ -1374,6 +1444,13 @@ function appendChatBubble(msg) {
   bubble.innerHTML = `<div>${escapeHtml(msg.content)}</div><div class="bubble-meta" style="display:flex;align-items:center;gap:0">${msg.source || (msg.role === 'user' ? 'You' : 'CEO AI')} · ${timeAgo(msg.timestamp)}${voiceBtn}</div>`;
   wrap.appendChild(bubble);
   wrap.scrollTop = wrap.scrollHeight;
+  // Auto-speak in voice mode
+  if (_voiceMode && msg.role === 'assistant') {
+    const fakeBtn = { textContent: '🔊', style: {}, _audio: null, _synth: false };
+    speakMessage(fakeBtn, msg.content.slice(0, 2500));
+    // Also restart mic for next turn after reply finishes
+    setTimeout(() => { if (_voiceMode) toggleMic(document.getElementById('chatMicBtn'), 'chatInput'); }, 1500);
+  }
 }
 
 // Speak text via best available provider. Falls back to browser Web Speech API.
@@ -1441,7 +1518,11 @@ function toggleMic(btn, targetInputId) {
   const rec = new SpeechRec();
   rec.continuous = false; rec.interimResults = false; rec.lang = 'en-AU';
   rec.onstart = () => { btn.style.color = '#e74c3c'; btn.title = 'Listening... click to stop'; };
-  rec.onresult = (e) => { input.value = e.results[0][0].transcript; };
+  rec.onresult = (e) => {
+    input.value = e.results[0][0].transcript;
+    // Auto-send if voice mode is on
+    if (_voiceMode && input.id === 'chatInput') setTimeout(sendChat, 200);
+  };
   rec.onend = () => { btn.style.color = 'var(--muted)'; btn.title = 'Voice input'; _micRecog = null; };
   rec.onerror = (e) => { console.warn('Speech recognition error:', e.error); btn.style.color = 'var(--muted)'; _micRecog = null; };
   rec.start();
@@ -1526,62 +1607,63 @@ async function loadIntegrations() {
     // Each entry: [key, label, partialKey|null]
     // partialKey = another status key that means "configured but not fully authed"
     // [statusKey, label, partialKey|null, envKey|null, hint]
+    // [statusKey, label, partialKey, envKey, hint, url]
     const groups = {
       '💬 Communication': [
-        ['telegram',  'Telegram Bot',  null, 'TG_TOKEN',               'Bot token from @BotFather'],
-        ['discord',   'Discord',       null, 'DISCORD_TOKEN',          'Bot token from Discord Dev Portal'],
-        ['slack',     'Slack',         null, 'SLACK_TOKEN',            'xoxb-... bot token'],
-        ['twilio',    'Twilio (SMS)',   null, 'TWILIO_ACCOUNT_SID',     'Account SID from twilio.com/console'],
-        ['hootsuite', 'Hootsuite',      null, 'HOOTSUITE_ACCESS_TOKEN', 'OAuth access token from Hootsuite'],
+        ['telegram',  'Telegram Bot',  null, 'TG_TOKEN',               'Bot token from @BotFather', 'https://t.me/botfather'],
+        ['discord',   'Discord',       null, 'DISCORD_TOKEN',          'Bot token from Discord Dev Portal', 'https://discord.com/developers/applications'],
+        ['slack',     'Slack',         null, 'SLACK_TOKEN',            'xoxb-... bot token', 'https://api.slack.com/apps'],
+        ['twilio',    'Twilio (SMS)',   null, 'TWILIO_ACCOUNT_SID',     'Account SID from twilio.com/console', 'https://console.twilio.com'],
+        ['hootsuite', 'Hootsuite',      null, 'HOOTSUITE_ACCESS_TOKEN', 'OAuth access token from Hootsuite', 'https://developer.hootsuite.com'],
       ],
       '📧 Email & Google': [
-        ['gmail',              'Gmail (send)',                       null, 'GMAIL_ADDRESS',       'Your Gmail address'],
-        ['google_oauth_ready', 'Google Auth',                        null, 'GOOGLE_CLIENT_ID',    'Client ID from Google Cloud Console'],
-        ['google_suite',       'Google Suite (Docs/Sheets/Calendar)','google_oauth_ready', null, null],
-        ['google_drive',       'Google Drive',                       'google_oauth_ready', null, null],
+        ['gmail',              'Gmail',                             null, 'GMAIL_ADDRESS',       'Your Gmail address', 'https://myaccount.google.com/apppasswords'],
+        ['google_oauth_ready', 'Google Auth',                       null, 'GOOGLE_CLIENT_ID',    'Client ID from Google Cloud Console', 'https://console.cloud.google.com/apis/credentials'],
+        ['google_suite',       'Google Suite (Docs/Sheets/Cal)',    'google_oauth_ready', null, null, 'https://console.cloud.google.com'],
+        ['google_drive',       'Google Drive',                      'google_oauth_ready', null, null, 'https://drive.google.com'],
       ],
       '🗂️ Productivity': [
-        ['notion',   'Notion',         null, 'NOTION_TOKEN',     'Integration token from notion.so/my-integrations'],
-        ['hubspot',  'HubSpot CRM',    null, 'HUBSPOT_API_KEY',  'Private app token from HubSpot'],
-        ['zoho_crm', 'Zoho CRM',       null, 'ZOHO_CRM_CLIENT_ID', 'Client ID from Zoho API console'],
-        ['trello',   'Trello',         null, 'TRELLO_API_KEY',   'API key from trello.com/app-key'],
-        ['monday',   'Monday.com',     null, 'MONDAY_API_KEY',   'API token from Monday account settings'],
+        ['notion',   'Notion',         null, 'NOTION_TOKEN',       'Integration token', 'https://www.notion.so/my-integrations'],
+        ['hubspot',  'HubSpot CRM',    null, 'HUBSPOT_API_KEY',    'Private app token', 'https://app.hubspot.com/settings/integrations/private-apps'],
+        ['zoho_crm', 'Zoho CRM',       null, 'ZOHO_CRM_CLIENT_ID','Client ID', 'https://api-console.zoho.com'],
+        ['trello',   'Trello',         null, 'TRELLO_API_KEY',     'API key', 'https://trello.com/app-key'],
+        ['monday',   'Monday.com',     null, 'MONDAY_API_KEY',     'API token', 'https://monday.com/settings/developers'],
       ],
       '☁️ File Storage': [
-        ['microsoft365', 'Microsoft 365', null, 'MICROSOFT_CLIENT_ID', 'App client ID from Azure portal'],
-        ['onedrive',     'OneDrive',       null, null, null],
-        ['dropbox',      'Dropbox',        null, 'DROPBOX_ACCESS_TOKEN', 'Access token from Dropbox App Console'],
+        ['microsoft365', 'Microsoft 365', null, 'MICROSOFT_CLIENT_ID', 'App client ID', 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade'],
+        ['onedrive',     'OneDrive',       null, null, null, 'https://onedrive.live.com'],
+        ['dropbox',      'Dropbox',        null, 'DROPBOX_ACCESS_TOKEN', 'Access token', 'https://www.dropbox.com/developers/apps'],
       ],
       '💰 Finance & ERP': [
-        ['stripe',     'Stripe',      null, 'STRIPE_SECRET_KEY', 'sk_live_... from Stripe Dashboard'],
-        ['xero',       'Xero',        null, 'XERO_CLIENT_ID',    'Client ID from Xero Developer Portal'],
-        ['quickbooks', 'QuickBooks',  null, 'QUICKBOOKS_CLIENT_ID', 'Client ID from Intuit Developer'],
-        ['myob',       'MYOB',        null, 'MYOB_CLIENT_ID',    'Client ID from MYOB Developer'],
-        ['odoo',       'Odoo ERP',    null, 'ODOO_URL',          'Your Odoo instance URL (https://yourco.odoo.com)'],
+        ['stripe',     'Stripe',      null, 'STRIPE_SECRET_KEY',    'sk_live_... key', 'https://dashboard.stripe.com/apikeys'],
+        ['xero',       'Xero',        null, 'XERO_CLIENT_ID',       'Client ID', 'https://developer.xero.com/app/manage'],
+        ['quickbooks', 'QuickBooks',  null, 'QUICKBOOKS_CLIENT_ID', 'Client ID', 'https://developer.intuit.com/app/developer/dashboard'],
+        ['myob',       'MYOB',        null, 'MYOB_CLIENT_ID',       'Client ID', 'https://developer.myob.com'],
+        ['odoo',       'Odoo ERP',    null, 'ODOO_URL',             'Instance URL', 'https://www.odoo.com'],
       ],
       '🔍 Web Search': [
-        ['brave_search', 'Brave Search',         null, 'BRAVE_SEARCH_API_KEY', 'API key from brave.com/search/api'],
-        ['perplexity',   'Perplexity AI',         null, 'PERPLEXITY_API_KEY',   'API key from perplexity.ai/settings'],
-        ['tavily',       'Tavily',                null, 'TAVILY_API_KEY',       'API key from tavily.com'],
-        ['serpapi',      'SerpAPI (Google)',       null, 'SERPAPI_KEY',          'API key from serpapi.com'],
-        ['google_cse',   'Google Custom Search',  null, 'GOOGLE_CSE_KEY',       'API key from Google Cloud Console'],
-        ['duckduckgo',   'DuckDuckGo (free)',      null, null, null],
+        ['brave_search', 'Brave Search',        null, 'BRAVE_API_KEY',       'API key (BRAVE_API_KEY)', 'https://brave.com/search/api/'],
+        ['perplexity',   'Perplexity AI',        null, 'PERPLEXITY_API_KEY',  'API key', 'https://www.perplexity.ai/settings/api'],
+        ['tavily',       'Tavily',               null, 'TAVILY_API_KEY',      'API key', 'https://app.tavily.com'],
+        ['serpapi',      'SerpAPI',              null, 'SERPAPI_KEY',         'API key', 'https://serpapi.com/manage-api-key'],
+        ['google_cse',   'Google Custom Search', null, 'GOOGLE_CSE_KEY',      'API key', 'https://programmablesearchengine.google.com'],
+        ['duckduckgo',   'DuckDuckGo (free)',     null, null, null, 'https://duckduckgo.com'],
       ],
       '🌐 Web Fetch': [
-        ['firecrawl', 'Firecrawl', null, 'FIRECRAWL_API_KEY', 'API key from firecrawl.dev'],
-        ['jina',      'Jina AI (free)', null, null, null],
+        ['firecrawl', 'Firecrawl',     null, 'FIRECRAWL_API_KEY', 'API key', 'https://firecrawl.dev'],
+        ['jina',      'Jina AI (free)', null, null, null, 'https://jina.ai'],
       ],
       '🗄️ Data': [
-        ['supabase', 'Supabase', null, 'SUPABASE_URL', 'Project URL from supabase.com/dashboard'],
-        ['github',   'GitHub',   null, 'GITHUB_TOKEN', 'Personal access token from github.com/settings/tokens'],
+        ['supabase', 'Supabase', null, 'SUPABASE_URL',  'Project URL', 'https://supabase.com/dashboard'],
+        ['github',   'GitHub',   null, 'GITHUB_TOKEN',  'Personal access token', 'https://github.com/settings/tokens'],
       ],
       '🖥️ Browsers': [
-        ['chrome',        'Google Chrome', null, null, null],
-        ['brave_browser', 'Brave Browser', null, null, null],
+        ['chrome',        'Google Chrome', null, null, null, 'https://www.google.com/chrome/'],
+        ['brave_browser', 'Brave Browser', null, null, null, 'https://brave.com'],
       ],
       '🔊 Media': [
-        ['elevenlabs', 'ElevenLabs (voice)', null, 'ELEVENLABS_API_KEY', 'API key from elevenlabs.io'],
-        ['tandem',     'Tandem (video)',      null, null, null],
+        ['elevenlabs', 'ElevenLabs (voice)', null, 'ELEVENLABS_API_KEY', 'API key', 'https://elevenlabs.io/app/settings/api-keys'],
+        ['tandem',     'Tandem (video)',      null, null, null, 'https://tandem.chat'],
       ],
     };
 
@@ -1597,22 +1679,25 @@ async function loadIntegrations() {
 
     const grid = document.getElementById('integrationsGrid');
     grid.innerHTML = Object.entries(groups).map(([groupLabel, items]) => {
-      const rows = items.map(([k, label, partialKey, envKey, hint]) => {
+      const rows = items.map(([k, label, partialKey, envKey, hint, url]) => {
         const configured = d[k] || (partialKey && d[partialKey]);
         const canConfigure = envKey && !configured;
         const rowId = `introw-${k}`;
+        const nameEl = url
+          ? `<a href="${url}" target="_blank" style="font-size:0.83rem;color:var(--accent);text-decoration:underline;text-underline-offset:2px">${label}</a>`
+          : `<span style="font-size:0.83rem">${label}</span>`;
         return `<div id="${rowId}" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px">
-            <span style="font-size:0.83rem">${label}</span>
+            ${nameEl}
             <div style="display:flex;align-items:center;gap:8px">
               ${statusBadge(k, partialKey)}
               ${canConfigure ? `<button onclick="toggleIntegrationEdit('${rowId}','${envKey}')" style="font-size:0.72rem;padding:2px 8px;border-radius:5px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer">Set key</button>` : ''}
             </div>
           </div>
           ${canConfigure ? `<div id="${rowId}-edit" style="display:none;padding:0 12px 10px;border-top:1px solid var(--border)">
-            <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px">${hint || envKey}</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px">${hint || envKey}${url ? ` — <a href="${url}" target="_blank" style="color:var(--accent)">Get key →</a>` : ''}</div>
             <div style="display:flex;gap:6px">
-              <input id="${rowId}-input" type="password" placeholder="${envKey}=..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;font-family:monospace" />
+              <input id="${rowId}-input" type="password" placeholder="${envKey}" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 8px;color:var(--text);font-size:0.8rem;font-family:monospace" />
               <button onclick="saveIntegrationKey('${envKey}','${rowId}')" style="background:var(--accent);color:#fff;border:none;border-radius:5px;padding:5px 14px;cursor:pointer;font-size:0.8rem;font-weight:600">Save</button>
             </div>
           </div>` : ''}
@@ -1945,7 +2030,7 @@ function switchSettingsTab(tab, el) {
   if (tab === 'integrations') loadIntegrations();
   if (tab === 'memory') loadMemory();
   if (tab === 'errors') loadErrorLog();
-  if (tab === 'aimodels') loadVoiceConfig();
+  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); }
 }
 
 async function loadVoiceConfig() {
@@ -1976,6 +2061,184 @@ async function saveVoiceProvider(val) {
 }
 async function saveGroqVoice(val) {
   await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:'VOICE_GROQ_VOICE', value: val }) });
+}
+
+async function testVoiceOutput(btn) {
+  const status = document.getElementById('voiceTestStatus');
+  const provider = document.getElementById('voiceProviderSelect')?.value || '';
+  const voice = document.getElementById('groqVoiceSelect')?.value || 'Fritz-PlayAI';
+  btn.disabled = true; btn.textContent = '⏳';
+  if (status) status.textContent = 'Sending to ' + (provider || 'auto') + '...';
+  try {
+    const r = await fetch('/api/voice/speak', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: 'Hello! Voice is working. This is your selected provider.', provider: provider || undefined }) });
+    const ct = r.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const d = await r.json();
+      if (d.browser) {
+        if (status) status.textContent = '🌐 Using browser Web Speech API';
+        speakBrowser({ textContent: '▶', style: {}, _synth: false }, d.text || 'Voice test complete.');
+      } else if (d.error) {
+        if (status) status.textContent = '⚠ ' + d.error;
+      }
+    } else {
+      const blob = await r.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      if (status) status.textContent = '🎵 Playing via ' + (provider || 'auto');
+      audio.play();
+      audio.onended = () => { if (status) status.textContent = '✓ Done'; };
+    }
+  } catch(e) { if (status) status.textContent = '✗ ' + e.message; }
+  btn.disabled = false; btn.textContent = '▶ Test voice';
+}
+
+// =============================================================================
+// VOICE MODE — speak → AI replies → auto-speak reply
+// =============================================================================
+let _voiceMode = false;
+function toggleVoiceMode() {
+  _voiceMode = !_voiceMode;
+  const btn = document.getElementById('voiceModeBtn');
+  if (btn) { btn.textContent = _voiceMode ? '🔊' : '🔇'; btn.style.color = _voiceMode ? 'var(--accent)' : 'var(--muted)'; btn.title = _voiceMode ? 'Voice mode ON — click to disable' : 'Voice mode — speak, hear reply'; }
+}
+
+// =============================================================================
+// OLLAMA — local models
+// =============================================================================
+async function loadOllamaModels() {
+  const statusEl = document.getElementById('ollamaStatus');
+  const listEl = document.getElementById('ollamaModelList');
+  if (!statusEl || !listEl) return;
+  try {
+    const r = await fetch('/api/ollama/models');
+    const d = await r.json();
+    if (!d.running) {
+      statusEl.innerHTML = `<span style="color:var(--red)">⚠ Ollama not running</span> — start it with <code>ollama serve</code> or download from <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com</a>`;
+      listEl.innerHTML = '';
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--green)">✓ Ollama running</span> at ${d.host} — ${d.models.length} model${d.models.length !== 1 ? 's' : ''} available`;
+      if (!d.models.length) { listEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:span 2">No models pulled yet. Use the buttons below to download one.</div>'; return; }
+      listEl.innerHTML = d.models.map(m => `
+        <div style="padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+          <div style="font-size:0.83rem;font-weight:600">${m.name}</div>
+          <div style="font-size:0.72rem;color:var(--muted)">${m.params || m.family || ''} · ${m.size ? (m.size/1e9).toFixed(1)+'GB' : ''}</div>
+        </div>`).join('');
+    }
+  } catch(e) { if (statusEl) statusEl.textContent = 'Error: ' + e.message; }
+}
+
+async function ollamaPull(model) {
+  const status = document.getElementById('ollamaPullStatus');
+  if (status) status.textContent = `⏳ Pulling ${model} — this may take a few minutes...`;
+  try {
+    const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: `Please run: ollama pull ${model}` }) });
+    if (status) status.textContent = `✓ Pull started for ${model}. Check terminal for progress.`;
+    setTimeout(loadOllamaModels, 5000);
+  } catch(e) { if (status) status.textContent = '✗ ' + e.message; }
+}
+
+// =============================================================================
+// IDEAS PANEL
+// =============================================================================
+async function loadIdeas(forceRefresh) {
+  const el = document.getElementById('ideasList');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">Generating personalised suggestions...</div>';
+  try {
+    const url = forceRefresh ? '/api/ideas?refresh=1' : '/api/ideas';
+    const r = await fetch(url);
+    const d = await r.json();
+    const ideas = d.ideas || [];
+    const badge = document.getElementById('ideaCountBadge');
+    if (badge) { badge.style.display = ideas.length ? 'block' : 'none'; badge.textContent = ideas.length; }
+    if (!ideas.length) { el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No suggestions right now — check back tomorrow, or ask below.</div>'; return; }
+    el.innerHTML = ideas.map(idea => `
+      <div id="idea-${idea.id}" style="padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--muted);margin-right:6px">${idea.category}</span>
+            <span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:${idea.impact==='High'?'rgba(61,214,140,0.12)':'rgba(91,141,238,0.1)'};color:${idea.impact==='High'?'var(--green)':'var(--accent)'};border:1px solid ${idea.impact==='High'?'rgba(61,214,140,0.3)':'rgba(91,141,238,0.3)'}">${idea.impact} impact</span>
+            <span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--muted)">${idea.effort}</span>
+          </div>
+        </div>
+        <div style="font-weight:600;margin-bottom:4px">${idea.title}</div>
+        <div style="font-size:0.83rem;color:var(--muted);margin-bottom:12px">${idea.description}</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="implementIdea('${idea.id}',this)" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:0.82rem;font-weight:600">Yes, implement this</button>
+          <button onclick="dismissIdea('${idea.id}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:0.82rem;color:var(--muted)">Not now</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
+}
+
+async function dismissIdea(id) {
+  document.getElementById('idea-' + id)?.remove();
+  await fetch('/api/ideas/dismiss', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+}
+
+async function implementIdea(id, btn) {
+  btn.textContent = '⏳ Queuing...'; btn.disabled = true;
+  const r = await fetch('/api/ideas/implement', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+  const d = await r.json();
+  btn.textContent = '✓ Queued!';
+  const card = document.getElementById('idea-' + id);
+  if (card) card.style.opacity = '0.5';
+  setTimeout(() => showPanel('decisions'), 2000);
+}
+
+async function askCustomIdea() {
+  const input = document.getElementById('customIdeaInput');
+  const msg = input?.value?.trim();
+  if (!msg) return;
+  input.value = '';
+  await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: `I want to add this to my OmniClaw dashboard: ${msg}. Can you implement it or guide me through it?` }) });
+  showPanel('chat');
+}
+
+// =============================================================================
+// DASHBOARD WIDGETS
+// =============================================================================
+let _widgetConfig = [];
+async function openWidgetConfig() {
+  const modal = document.getElementById('widgetModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  try {
+    const r = await fetch('/api/dashboard/widgets');
+    const d = await r.json();
+    _widgetConfig = d.widgets || [];
+    const list = document.getElementById('widgetList');
+    if (list) list.innerHTML = _widgetConfig.map(w => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer">
+        <input type="checkbox" data-wid="${w.id}" ${w.enabled?'checked':''} style="accent-color:var(--accent)">
+        <span style="font-size:0.88rem">${w.icon} ${w.label}</span>
+      </label>`).join('');
+  } catch(e) {}
+}
+
+function closeWidgetConfig() { const m = document.getElementById('widgetModal'); if (m) m.style.display = 'none'; }
+
+async function saveWidgetConfig() {
+  const checkboxes = document.querySelectorAll('#widgetList input[type=checkbox]');
+  checkboxes.forEach(cb => { const w = _widgetConfig.find(x => x.id === cb.dataset.wid); if (w) w.enabled = cb.checked; });
+  await fetch('/api/dashboard/widgets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ widgets: _widgetConfig }) });
+  closeWidgetConfig();
+}
+
+async function askCEOWidget() {
+  const input = document.getElementById('customWidgetInput');
+  const msg = input?.value?.trim();
+  if (!msg) return;
+  input.value = '';
+  closeWidgetConfig();
+  await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: `Please build a dashboard widget that shows: ${msg}` }) });
+  showPanel('chat');
+}
+
+async function runImprovementNow() {
+  const btn = event?.target;
+  if (btn) { btn.textContent = '⏳ Running...'; btn.disabled = true; }
+  await fetch('/api/improve/run', { method:'POST' });
+  if (btn) { btn.textContent = '✓ Sweep started'; setTimeout(() => { btn.textContent = '🌙 Improve'; btn.disabled = false; }, 3000); }
 }
 
 async function loadErrorLog() {

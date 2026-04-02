@@ -703,10 +703,11 @@ function handleSearchError(provider, e) {
 }
 
 async function webSearch(query) {
-  if (process.env.BRAVE_API_KEY && !isOnCooldown('search_brave')) {
+  const braveKey = process.env.BRAVE_API_KEY || process.env.BRAVE_SEARCH_API_KEY;
+  if (braveKey && !isOnCooldown('search_brave')) {
     try {
       const r = await axios.get('https://api.search.brave.com/res/v1/web/search', {
-        headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': process.env.BRAVE_API_KEY },
+        headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
         params: { q: query, count: 6 }, timeout: 10000,
       });
       const hits = (r.data.web?.results || []).slice(0, 6);
@@ -1767,7 +1768,7 @@ app.get('/api/integrations/status', (req, res) => {
     github:            !!(githubToken && process.env.GITHUB_REPO),
     odoo:              !!process.env.ODOO_URL,
     // ── Web Search ─────────────────────────────────────────────────────────
-    brave_search:      !!process.env.BRAVE_API_KEY,
+    brave_search:      !!(process.env.BRAVE_API_KEY || process.env.BRAVE_SEARCH_API_KEY),
     perplexity:        !!process.env.PERPLEXITY_API_KEY,
     tavily:            !!process.env.TAVILY_API_KEY,
     serpapi:           !!process.env.SERPAPI_KEY,
@@ -2295,6 +2296,192 @@ app.post('/api/voice/transcribe', upload.single('audio'), async (req, res) => {
 });
 
 // =============================================================================
+// OLLAMA — fetch available local models
+// =============================================================================
+app.get('/api/ollama/models', async (req, res) => {
+  const base = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  try {
+    const r = await axios.get(`${base}/api/tags`, { timeout: 5000 });
+    const models = (r.data.models || []).map(m => ({
+      name: m.name, size: m.size, modified: m.modified_at,
+      family: m.details?.family || '', params: m.details?.parameter_size || '',
+    }));
+    res.json({ running: true, models, host: base });
+  } catch (e) {
+    res.json({ running: false, models: [], host: base, error: e.code === 'ECONNREFUSED' ? 'Ollama not running' : e.message });
+  }
+});
+
+// =============================================================================
+// IDEAS — AI-generated personalised suggestions for the user's setup
+// =============================================================================
+const IDEA_STORE_PATH = path.join(ROOT, 'memory', 'ideas.json');
+function loadIdeas() { try { return JSON.parse(fs.readFileSync(IDEA_STORE_PATH, 'utf8')); } catch(_) { return []; } }
+function saveIdeas(ideas) { fs.writeFileSync(IDEA_STORE_PATH, JSON.stringify(ideas, null, 2)); }
+
+app.get('/api/ideas', async (req, res) => {
+  let ideas = loadIdeas();
+  // Generate fresh ideas if none or stale (older than 24h)
+  const fresh = ideas.filter(i => !i.dismissed && Date.now() - new Date(i.created).getTime() < 24 * 3600000);
+  if (fresh.length >= 3) return res.json({ ideas: fresh });
+  // Generate new ideas based on current config
+  const configured = [];
+  const missing = [];
+  if (process.env.ANTHROPIC_API_KEY) configured.push('Anthropic Claude');
+  if (!process.env.ANTHROPIC_API_KEY) missing.push('Anthropic API key');
+  if (process.env.GMAIL_ADDRESS) configured.push('Gmail');
+  if (!process.env.GMAIL_ADDRESS) missing.push('Gmail (email sending)');
+  if (process.env.TG_TOKEN) configured.push('Telegram');
+  if (!process.env.TG_TOKEN) missing.push('Telegram bot');
+  if (process.env.STRIPE_SECRET_KEY) configured.push('Stripe payments');
+  if (!process.env.STRIPE_SECRET_KEY) missing.push('Stripe (to send invoices & track revenue)');
+  if (process.env.NOTION_TOKEN) configured.push('Notion');
+  if (!process.env.NOTION_TOKEN) missing.push('Notion (knowledge base + project tracking)');
+  if (process.env.SLACK_TOKEN) configured.push('Slack');
+  if (!process.env.SLACK_TOKEN) missing.push('Slack (team comms)');
+  if (process.env.SUPABASE_URL) configured.push('Supabase database');
+  const errorCount = errorLog.filter(e => !e.resolved).length;
+
+  const contextPrompt = `You are the CIO of ${state.company}, an AI-powered company running on OmniClaw.
+
+Current setup: ${configured.join(', ') || 'minimal configuration'}
+Missing integrations: ${missing.slice(0, 5).join(', ') || 'none obvious'}
+Active errors: ${errorCount}
+Active agents: ${Object.keys(state.agents).length}
+Recent decisions: ${state.decisions.slice(-3).map(d => d.objective).join(', ') || 'none'}
+
+Generate 6 specific, actionable suggestions to improve or extend this OmniClaw setup. Each suggestion should be something that can realistically be implemented. Focus on high business value.
+
+Respond ONLY with a JSON array like:
+[
+  { "id": "unique-slug", "title": "Short title", "description": "1-2 sentence description of what this does and why it's valuable", "category": "Revenue|Automation|Comms|Data|Security|Productivity", "effort": "Quick|Medium|Complex", "impact": "High|Medium" }
+]`;
+
+  try {
+    const raw = await callAI([{ role: 'user', content: contextPrompt }],
+      'You are a strategic AI advisor. Respond ONLY with valid JSON. No markdown fences, no explanation.');
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const newIdeas = JSON.parse(jsonMatch[0]).map(idea => ({ ...idea, created: new Date().toISOString(), dismissed: false, implemented: false }));
+      ideas = [...newIdeas, ...ideas.filter(i => i.dismissed || i.implemented)].slice(0, 50);
+      saveIdeas(ideas);
+      return res.json({ ideas: newIdeas });
+    }
+  } catch(e) { console.log('[IDEAS] Generation failed:', e.message); }
+  res.json({ ideas: [] });
+});
+
+app.post('/api/ideas/dismiss', (req, res) => {
+  const { id } = req.body;
+  const ideas = loadIdeas();
+  const idea = ideas.find(i => i.id === id);
+  if (idea) { idea.dismissed = true; saveIdeas(ideas); }
+  res.json({ ok: true });
+});
+
+app.post('/api/ideas/implement', async (req, res) => {
+  const { id } = req.body;
+  const ideas = loadIdeas();
+  const idea = ideas.find(i => i.id === id);
+  if (!idea) return res.status(404).json({ error: 'Idea not found' });
+  res.json({ ok: true, message: `I'll get started on "${idea.title}" right away. Check the Decisions panel to track progress.` });
+  // Queue as a decision
+  const decision = {
+    id: `decision-${Date.now()}`,
+    objective: idea.title,
+    context: idea.description,
+    status: 'in-progress',
+    created: new Date().toISOString(),
+    source: 'ideas-panel',
+  };
+  state.decisions.push(decision);
+  io.emit('decision:new', decision);
+  idea.implemented = true;
+  saveIdeas(ideas);
+});
+
+// =============================================================================
+// DASHBOARD WIDGETS CONFIG
+// =============================================================================
+const WIDGET_CONFIG_PATH = path.join(ROOT, 'memory', 'dashboard-widgets.json');
+const DEFAULT_WIDGETS = [
+  { id: 'agents', label: 'Agent Status', icon: '🤖', enabled: true, order: 0 },
+  { id: 'decisions', label: 'Recent Decisions', icon: '⚖️', enabled: true, order: 1 },
+  { id: 'errors', label: 'System Errors', icon: '⚠️', enabled: true, order: 2 },
+  { id: 'briefing', label: 'Morning Briefing', icon: '☀️', enabled: true, order: 3 },
+  { id: 'news', label: 'Business News', icon: '📰', enabled: false, order: 4 },
+  { id: 'weather', label: 'Weather', icon: '🌤️', enabled: false, order: 5 },
+  { id: 'finance', label: 'Finance Snapshot', icon: '💰', enabled: false, order: 6 },
+  { id: 'github', label: 'GitHub Activity', icon: '🐙', enabled: false, order: 7 },
+  { id: 'telegram', label: 'Telegram Activity', icon: '✈️', enabled: false, order: 8 },
+  { id: 'custom', label: 'Custom (ask CEO)', icon: '✨', enabled: false, order: 9 },
+];
+function loadWidgetConfig() {
+  try { return JSON.parse(fs.readFileSync(WIDGET_CONFIG_PATH, 'utf8')); } catch(_) { return DEFAULT_WIDGETS; }
+}
+app.get('/api/dashboard/widgets', (req, res) => res.json({ widgets: loadWidgetConfig() }));
+app.post('/api/dashboard/widgets', (req, res) => {
+  const { widgets } = req.body;
+  if (!Array.isArray(widgets)) return res.status(400).json({ error: 'widgets array required' });
+  fs.writeFileSync(WIDGET_CONFIG_PATH, JSON.stringify(widgets, null, 2));
+  res.json({ ok: true });
+});
+
+// =============================================================================
+// SELF-IMPROVEMENT ENGINE — nightly overnight optimisation
+// =============================================================================
+async function runSelfImprovement() {
+  console.log('[IMPROVE] 🌙 Overnight self-improvement sweep starting...');
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+  const unresolvedErrors = errorLog.filter(e => !e.resolved);
+  const recentDecisions = state.decisions.slice(-10);
+
+  const systemState = {
+    company: state.company,
+    agentCount: Object.keys(state.agents).length,
+    errorCount: unresolvedErrors.length,
+    topErrors: unresolvedErrors.slice(0, 5).map(e => `${e.context}: ${e.message}`),
+    recentDecisions: recentDecisions.map(d => `${d.objective} (${d.status})`),
+    configuredIntegrations: [
+      process.env.ANTHROPIC_API_KEY && 'Anthropic', process.env.GROQ_API_KEY && 'Groq',
+      process.env.GMAIL_ADDRESS && 'Gmail', process.env.TG_TOKEN && 'Telegram',
+      process.env.STRIPE_SECRET_KEY && 'Stripe', process.env.NOTION_TOKEN && 'Notion',
+      process.env.SUPABASE_URL && 'Supabase',
+    ].filter(Boolean),
+  };
+
+  const prompt = `You are TommyClaw's CIO running the nightly self-improvement sweep for ${state.company}.
+
+SYSTEM STATE:
+${JSON.stringify(systemState, null, 2)}
+
+YOUR TASK — overnight improvement sweep:
+1. Review the unresolved errors and identify any patterns or quick wins
+2. Identify 3 optimisations that could be made to the current configuration
+3. Draft tomorrow's priority list for the CEO
+4. Suggest one automation that would save the most time this week
+5. Flag any risks or things to watch
+
+Write a concise overnight report. Be specific, actionable, and direct.${vaultPath ? '\n\nEnd with [[ACTION:obsidian_write|OmniClaw Overnight Report ' + new Date().toLocaleDateString() + '|' + '<report content here>' + ']]' : ''}`;
+
+  try {
+    const rawReply = await callAI([{ role: 'user', content: prompt }], `You are the autonomous CIO of ${state.company}. Be direct, specific, and focused on actionable improvements.`);
+    await executeActions(rawReply, '');
+    console.log('[IMPROVE] ✅ Overnight sweep complete');
+    io.emit('system:improvement', { time: new Date().toISOString(), summary: 'Overnight self-improvement sweep completed' });
+    logError.length = 0; // clear old resolved errors
+    errorLog.splice(0, errorLog.length, ...errorLog.filter(e => !e.resolved || Date.now() - new Date(e.time).getTime() < 86400000));
+  } catch (e) {
+    console.error('[IMPROVE] Sweep failed:', e.message);
+  }
+}
+
+app.post('/api/improve/run', async (req, res) => {
+  res.json({ ok: true, message: 'Self-improvement sweep started — check logs.' });
+  runSelfImprovement();
+});
+
+// =============================================================================
 // =============================================================================
 // PROACTIVE CEO — autonomous company analysis, business plan, self-improvement
 // =============================================================================
@@ -2450,6 +2637,10 @@ server.listen(PORT, () => {
   setTimeout(runProactiveCEO, 60000);
   cron.schedule('0 6 * * *', runProactiveCEO, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
   console.log('   CEO:       Proactive sweep scheduled daily at 06:00');
+
+  // Self-improvement engine: runs every night at 02:00
+  cron.schedule('0 2 * * *', runSelfImprovement, { timezone: process.env.TIMEZONE || 'Australia/Sydney' });
+  console.log('   CIO:       Self-improvement sweep scheduled nightly at 02:00');
 
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
