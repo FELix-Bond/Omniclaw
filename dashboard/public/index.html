@@ -517,7 +517,7 @@
       <div style="max-width:760px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <h3 style="margin:0">⚙️ Settings</h3>
-          <button class="btn-sm" onclick="loadSettings()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">Refresh</button>
+          <button class="btn-sm" id="settingsRefreshBtn" onclick="reloadAllSettings(this)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem">↻ Refresh</button>
         </div>
 
         <div class="settings-tabs">
@@ -1444,12 +1444,17 @@ function appendChatBubble(msg) {
   bubble.innerHTML = `<div>${escapeHtml(msg.content)}</div><div class="bubble-meta" style="display:flex;align-items:center;gap:0">${msg.source || (msg.role === 'user' ? 'You' : 'CEO AI')} · ${timeAgo(msg.timestamp)}${voiceBtn}</div>`;
   wrap.appendChild(bubble);
   wrap.scrollTop = wrap.scrollHeight;
-  // Auto-speak in voice mode
-  if (_voiceMode && msg.role === 'assistant') {
+  // Auto-speak ONLY if this reply was triggered by a voice mic input
+  if (_voiceSpeakNext && msg.role === 'assistant') {
+    _voiceSpeakNext = false;
+    const clean = stripForSpeech(msg.content);
     const fakeBtn = { textContent: '🔊', style: {}, _audio: null, _synth: false };
-    speakMessage(fakeBtn, msg.content.slice(0, 2500));
-    // Also restart mic for next turn after reply finishes
-    setTimeout(() => { if (_voiceMode) toggleMic(document.getElementById('chatMicBtn'), 'chatInput'); }, 1500);
+    speakMessage(fakeBtn, clean);
+    // Restart mic for next turn ~1s after speech should be done (~100 chars/sec)
+    const resumeDelay = Math.min(Math.max(clean.length * 60, 2000), 15000);
+    setTimeout(() => {
+      if (_voiceMode) toggleMic(document.getElementById('chatMicBtn'), 'chatInput');
+    }, resumeDelay);
   }
 }
 
@@ -1499,63 +1504,136 @@ function speakBrowser(btn, text) {
 }
 
 // =============================================================================
-// MIC — browser speech-to-text using Web Speech API
+// STRIP TEXT FOR SPEECH — remove action tags, markdown, fluff
+// =============================================================================
+function stripForSpeech(text) {
+  return text
+    .replace(/\[\[ACTION:[\s\S]*?\]\]/g, '')   // remove [[ACTION:...]] blocks
+    .replace(/#{1,6} /g, '')                   // markdown headers
+    .replace(/\*\*(.+?)\*\*/gs, '$1')           // bold
+    .replace(/\*(.+?)\*/gs, '$1')               // italic
+    .replace(/`{1,3}[\s\S]*?`{1,3}/g, '')       // code blocks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [link text](url) → text
+    .replace(/^[>\-•*] */gm, '')               // blockquotes/bullets
+    .replace(/\n{3,}/g, '\n')
+    .trim()
+    .slice(0, 2000);
+}
+
+// =============================================================================
+// MIC — natural conversational voice input
 // =============================================================================
 let _micRecog = null;
+let _micBtn = null;          // reference to active mic button
+let _sendTimer = null;       // silence → send timer
+
+function micSetActive(btn, active) {
+  if (!btn) return;
+  if (active) {
+    btn.textContent = '🎙️';
+    btn.style.color = 'var(--accent)';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.boxShadow = '0 0 8px rgba(91,141,238,0.5)';
+    btn.title = 'Listening… click to cancel';
+  } else {
+    btn.textContent = '🎤';
+    btn.style.color = 'var(--muted)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.boxShadow = 'none';
+    btn.title = 'Voice input';
+  }
+}
+
+function stopMic() {
+  clearTimeout(_sendTimer);
+  if (_micRecog) { try { _micRecog.abort(); } catch(_) {} _micRecog = null; }
+  micSetActive(_micBtn, false);
+  _micBtn = null;
+}
+
 function toggleMic(btn, targetInputId) {
   const input = document.getElementById(targetInputId);
-  if (_micRecog) {
-    _micRecog.stop(); _micRecog = null;
-    btn.style.color = 'var(--muted)'; btn.title = 'Voice input';
-    return;
-  }
+  if (_micRecog) { stopMic(); return; }
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRec) {
-    // Fallback: record audio and send to /api/voice/transcribe
-    recordAndTranscribe(btn, input);
-    return;
-  }
+  if (!SpeechRec) { recordAndTranscribe(btn, input); return; }
+
+  _micBtn = btn;
   const rec = new SpeechRec();
-  rec.continuous = false; rec.interimResults = false; rec.lang = 'en-AU';
-  rec.onstart = () => { btn.style.color = '#e74c3c'; btn.title = 'Listening... click to stop'; };
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.lang = navigator.language || 'en-AU';
+
+  rec.onstart = () => micSetActive(btn, true);
+
   rec.onresult = (e) => {
-    input.value = e.results[0][0].transcript;
-    // Auto-send if voice mode is on
-    if (_voiceMode && input.id === 'chatInput') setTimeout(sendChat, 200);
+    clearTimeout(_sendTimer);
+    let interim = '', final = '';
+    for (const r of e.results) {
+      if (r.isFinal) final += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    input.value = final || interim;
+
+    if (final) {
+      // 3-second silence window — auto-send if voice mode
+      if (_voiceMode && input.id === 'chatInput') {
+        _sendTimer = setTimeout(() => {
+          stopMic();
+          _voiceSpeakNext = true;
+          sendChat();
+        }, 1000);
+      }
+    }
   };
-  rec.onend = () => { btn.style.color = 'var(--muted)'; btn.title = 'Voice input'; _micRecog = null; };
-  rec.onerror = (e) => { console.warn('Speech recognition error:', e.error); btn.style.color = 'var(--muted)'; _micRecog = null; };
+
+  rec.onend = () => {
+    micSetActive(btn, false);
+    _micRecog = null;
+    _micBtn = null;
+    // If there's text in the input and voice mode is on, auto-send
+    if (_voiceMode && input.id === 'chatInput' && input.value.trim() && !_sendTimer) {
+      _voiceSpeakNext = true;
+      setTimeout(sendChat, 500);
+    }
+  };
+
+  rec.onerror = (e) => {
+    if (e.error !== 'aborted') console.warn('STT error:', e.error);
+    stopMic();
+  };
+
   rec.start();
   _micRecog = rec;
 }
 
 async function recordAndTranscribe(btn, input) {
-  // MediaRecorder fallback for browsers without SpeechRecognition (e.g. Firefox)
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const recorder = new MediaRecorder(stream);
     const chunks = [];
-    btn.style.color = '#e74c3c'; btn.title = 'Recording... click to stop';
+    micSetActive(btn, true);
+    _micBtn = btn;
     recorder.ondataavailable = e => chunks.push(e.data);
     recorder.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
-      btn.style.color = 'var(--muted)'; btn.title = 'Voice input';
+      micSetActive(btn, false); _micBtn = null;
       btn.textContent = '⏳';
       const blob = new Blob(chunks, { type: 'audio/webm' });
       const form = new FormData(); form.append('audio', blob, 'voice.webm');
       try {
         const r = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
         const d = await r.json();
-        if (d.text) input.value = d.text;
-        else alert('Transcription failed: ' + (d.error || 'unknown'));
-      } catch(e) { alert('Transcription error: ' + e.message); }
+        if (d.text) {
+          input.value = d.text;
+          if (_voiceMode && input.id === 'chatInput') { _voiceSpeakNext = true; setTimeout(sendChat, 500); }
+        }
+      } catch(e) { console.warn('Transcription error:', e.message); }
       btn.textContent = '🎤';
     };
     recorder.start();
-    // Auto-stop after 30s
-    const stopTimer = setTimeout(() => recorder.stop(), 30000);
+    const stopTimer = setTimeout(() => recorder.stop(), 45000);
     btn.onclick = () => { clearTimeout(stopTimer); recorder.stop(); btn.onclick = () => toggleMic(btn, input.id); };
-  } catch(e) { alert('Microphone access denied: ' + e.message); btn.style.color = 'var(--muted)'; }
+  } catch(e) { alert('Microphone access denied: ' + e.message); micSetActive(btn, false); }
 }
 
 function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
@@ -2035,24 +2113,34 @@ function switchSettingsTab(tab, el) {
 
 async function loadVoiceConfig() {
   try {
-    const r = await fetch('/api/voice/provider');
-    const d = await r.json();
+    const [provResp, setResp] = await Promise.all([fetch('/api/voice/provider'), fetch('/api/settings')]);
+    const prov = await provResp.json();
+    const setData = await setResp.json();
+    const settingsMap = {};
+    (setData.settings||[]).forEach(s => { if (s.type==='env') settingsMap[s.key] = s.value; });
+
     const sel = document.getElementById('voiceProviderSelect');
     const hint = document.getElementById('voiceProviderHint');
-    if (sel) sel.value = process.env?.VOICE_TTS_PROVIDER || '';
+    // Set provider dropdown to saved value (or blank = auto)
+    if (sel) sel.value = settingsMap['VOICE_TTS_PROVIDER'] || '';
     if (hint) {
-      const labels = { groq: '⚡ Groq TTS active (uses your Groq key)', elevenlabs: '🎵 ElevenLabs active', webspeech: '🌐 Browser Web Speech API active' };
-      hint.textContent = labels[d.provider] || `Auto-selected: ${d.provider}`;
+      const labels = { groq: '⚡ Groq TTS active — fast, natural, free with GROQ key', elevenlabs: '🎵 ElevenLabs active — premium quality', webspeech: '🌐 Browser Web Speech API — always free' };
+      hint.textContent = labels[prov.provider] || `Auto-selected: ${prov.provider}`;
     }
-    // Set current Groq voice selection
+
+    // Set Groq voice — default Fritz (male) if nothing saved
     const gv = document.getElementById('groqVoiceSelect');
-    if (gv) {
-      const r2 = await fetch('/api/settings');
-      const d2 = await r2.json();
-      const voiceEnv = (d2.settings||[]).find(s=>s.key==='VOICE_GROQ_VOICE');
-      if (voiceEnv) gv.value = voiceEnv.value;
-    }
+    if (gv) gv.value = settingsMap['VOICE_GROQ_VOICE'] || 'Fritz-PlayAI';
   } catch(e) {}
+}
+
+async function reloadAllSettings(btn) {
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+  // Switch to General tab first so the user can see the update
+  switchSettingsTab('general', document.querySelector('.settings-tab'));
+  await loadSettings();
+  loadIntegrations();
+  if (btn) { btn.textContent = '✓ Refreshed'; setTimeout(() => { btn.textContent = '↻ Refresh'; btn.disabled = false; }, 1500); }
 }
 
 async function saveVoiceProvider(val) {
@@ -2095,10 +2183,25 @@ async function testVoiceOutput(btn) {
 // VOICE MODE — speak → AI replies → auto-speak reply
 // =============================================================================
 let _voiceMode = false;
+let _voiceSpeakNext = false; // true only when AI should speak its next reply
 function toggleVoiceMode() {
   _voiceMode = !_voiceMode;
   const btn = document.getElementById('voiceModeBtn');
-  if (btn) { btn.textContent = _voiceMode ? '🔊' : '🔇'; btn.style.color = _voiceMode ? 'var(--accent)' : 'var(--muted)'; btn.title = _voiceMode ? 'Voice mode ON — click to disable' : 'Voice mode — speak, hear reply'; }
+  if (btn) {
+    btn.textContent = _voiceMode ? '🔊' : '🔇';
+    btn.style.color = _voiceMode ? 'var(--accent)' : 'var(--muted)';
+    btn.style.borderColor = _voiceMode ? 'var(--accent)' : 'var(--border)';
+    btn.style.boxShadow = _voiceMode ? '0 0 8px rgba(91,141,238,0.3)' : 'none';
+    btn.title = _voiceMode ? 'Voice mode ON — tap mic to speak, AI will reply aloud' : 'Voice mode — tap to enable';
+  }
+  if (_voiceMode) {
+    // Activate mic immediately when voice mode turns on
+    setTimeout(() => toggleMic(document.getElementById('chatMicBtn'), 'chatInput'), 300);
+  } else {
+    stopMic();
+    _voiceSpeakNext = false;
+    window.speechSynthesis?.cancel();
+  }
 }
 
 // =============================================================================

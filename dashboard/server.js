@@ -1435,6 +1435,46 @@ ${primaryList}
 When given a task: scan the full skill pool for relevant tools before responding. Use brainstorming to generate options, writing-plans to structure your approach, and the most relevant data/platform skills to produce a high-quality output. You have access to all 55+ OpenCLI-rs platforms, all API integrations, and all Superpowers workflow techniques.${codexNote}${openclawNote}`;
 }
 
+// Strip markdown and action tags for clean TTS speech
+function stripForSpeech(text) {
+  return text
+    .replace(/\[\[ACTION:[^\]]*?\]\]/gs, '')
+    .replace(/#{1,6} /g, '')
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*(.+?)\*/gs, '$1')
+    .replace(/`{1,3}[\s\S]*?`{1,3}/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[>\-•] */gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 2000);
+}
+
+// Send a voice message back to Telegram using Groq TTS
+async function sendTelegramVoice(chatId, text) {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return false;
+  try {
+    const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+    const audioResp = await axios.post(
+      'https://api.groq.com/openai/v1/audio/speech',
+      { model: 'playai-tts', voice, input: stripForSpeech(text), response_format: 'wav' },
+      { headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+    );
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('voice', Buffer.from(audioResp.data), { filename: 'reply.wav', contentType: 'audio/wav' });
+    await axios.post(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendVoice`, form, {
+      headers: form.getHeaders(), timeout: 30000,
+    });
+    return true;
+  } catch (e) {
+    console.log('[TG] Voice reply failed:', e.response?.data || e.message);
+    return false;
+  }
+}
+
 async function sendTelegram(chatId, text, parse_mode) {
   if (!process.env.TG_TOKEN) return;
   try {
@@ -1525,18 +1565,17 @@ async function pollTelegram() {
 
       // Handle voice/audio messages — transcribe and route as text
       let text = msg.text;
+      const wasVoice = !msg.text && !!(msg.voice || msg.audio);
       if (!text && (msg.voice || msg.audio)) {
         const fileId = (msg.voice || msg.audio).file_id;
-        await sendTelegram(chatId, '🎙️ Transcribing voice message...');
         const transcript = await transcribeTelegramVoice(fileId);
         if (!transcript) {
-          await sendTelegram(chatId, '⚠️ Could not transcribe — add GROQ_API_KEY or OPENAI_API_KEY to enable voice messages.');
+          await sendTelegram(chatId, '⚠️ Could not transcribe voice message — add GROQ_API_KEY or OPENAI_API_KEY to .env');
           continue;
         }
         text = transcript;
-        await sendTelegram(chatId, `📝 _Transcribed:_ "${transcript}"`, 'Markdown');
       }
-      console.log(`[TG] Message from ${from}: ${text}`);
+      console.log(`[TG] ${wasVoice ? '🎙' : '💬'} Message from ${from}: ${text}`);
       io.emit('chat:message', { role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
 
       // Detect agent routing — /cfo, /cto, /clo etc.
@@ -1558,7 +1597,13 @@ async function pollTelegram() {
         const rawReply = await callAI(msgs, systemPrompt);
         const reply = await executeActions(rawReply, systemPrompt);
         const displayName = `${persona.emoji} ${persona.name}`;
-        await sendTelegram(chatId, `${displayName}\n\n${reply}`);
+        // For voice messages: reply with voice audio; for text: reply with text
+        if (wasVoice) {
+          const voiceSent = await sendTelegramVoice(chatId, reply);
+          if (!voiceSent) await sendTelegram(chatId, reply); // fallback to text if TTS fails
+        } else {
+          await sendTelegram(chatId, `${displayName}\n\n${reply}`);
+        }
         io.emit('chat:message', { role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
         chatHistory.push({ role: 'user', content: text, source: `Telegram (${from})`, timestamp: new Date().toISOString() });
         chatHistory.push({ role: 'assistant', content: reply, source: displayName, timestamp: new Date().toISOString() });
@@ -2341,6 +2386,12 @@ app.get('/api/ideas', async (req, res) => {
   if (!process.env.SLACK_TOKEN) missing.push('Slack (team comms)');
   if (process.env.SUPABASE_URL) configured.push('Supabase database');
   const errorCount = errorLog.filter(e => !e.resolved).length;
+  const voiceProvider = getTTSProvider();
+  const voiceNote = voiceProvider === 'groq'
+    ? 'Currently using Groq TTS (PlayAI voices — functional but robotic). Consider suggesting Kokoro.js (open-source, runs locally, very natural-sounding, free) or OpenAI TTS as a significant voice quality upgrade.'
+    : voiceProvider === 'elevenlabs'
+    ? 'Using ElevenLabs TTS — good quality.'
+    : 'No dedicated TTS configured — using browser speech synthesis which sounds robotic. Suggest Kokoro.js (open-source, local, natural) or Groq TTS as free upgrade.';
 
   const contextPrompt = `You are the CIO of ${state.company}, an AI-powered company running on OmniClaw.
 
@@ -2349,8 +2400,9 @@ Missing integrations: ${missing.slice(0, 5).join(', ') || 'none obvious'}
 Active errors: ${errorCount}
 Active agents: ${Object.keys(state.agents).length}
 Recent decisions: ${state.decisions.slice(-3).map(d => d.objective).join(', ') || 'none'}
+Voice system note: ${voiceNote}
 
-Generate 6 specific, actionable suggestions to improve or extend this OmniClaw setup. Each suggestion should be something that can realistically be implemented. Focus on high business value.
+Generate 6 specific, actionable suggestions to improve or extend this OmniClaw setup. Each suggestion should be something that can realistically be implemented. Focus on high business value. Include at least one voice/audio quality improvement based on the voice system note above.
 
 Respond ONLY with a JSON array like:
 [
