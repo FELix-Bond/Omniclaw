@@ -1670,58 +1670,97 @@ function toggleMic(btn, targetInputId) {
 async function recordAndTranscribe(btn, input) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Silence detection via AudioContext
-    let audioCtx, analyser, silenceTimer = null, hasSpoken = false;
+
+    // AudioContext for silence detection — MUST call resume() or it stays suspended
+    let audioCtx = null, analyser = null;
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await audioCtx.resume(); // browsers suspend by default even after user gesture
       analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
       audioCtx.createMediaStreamSource(stream).connect(analyser);
-    } catch(_) { /* AudioContext not available — fall back to manual stop */ }
+    } catch(_) { /* AudioContext unavailable — will auto-stop after maxTimer */ }
 
-    const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+    const ext = mimeType.includes('ogg') ? 'voice.ogg' : 'voice.webm';
+    const recorder = new MediaRecorder(stream, { mimeType });
     const chunks = [];
-    micSetActive(btn, true);
+    let silenceTimer = null, hasSpoken = false, lastInterimSent = 0;
+
+    micSetActive(btn, true, 'Listening… (speak now)');
     _micBtn = btn;
 
-    // Silence detection loop — stops after 3s of quiet after user has spoken
+    // Safer level detection via for-loop (spread can choke on large typed arrays)
     const silenceData = analyser ? new Uint8Array(analyser.fftSize) : null;
-    const silenceInterval = silenceData ? setInterval(() => {
+    function getAudioLevel() {
       analyser.getByteTimeDomainData(silenceData);
-      const level = Math.max(...silenceData.map(v => Math.abs(v - 128)));
-      if (level > 12) {
-        hasSpoken = true;
-        clearTimeout(silenceTimer); silenceTimer = null;
-        micSetActive(btn, true, 'Listening…');
-      } else if (hasSpoken && !silenceTimer) {
-        micSetActive(btn, true, 'Processing in 3s…');
-        silenceTimer = setTimeout(() => { recorder.stop(); }, 3000);
+      let max = 0;
+      for (let i = 0; i < silenceData.length; i++) {
+        const v = Math.abs(silenceData[i] - 128);
+        if (v > max) max = v;
       }
-    }, 120) : null;
+      return max;
+    }
 
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    const silenceInterval = analyser ? setInterval(() => {
+      const level = getAudioLevel();
+      if (level > 8) {
+        hasSpoken = true;
+        if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+        micSetActive(btn, true, '🔴 Recording…');
+      } else if (hasSpoken && !silenceTimer) {
+        silenceTimer = setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), 3000);
+        micSetActive(btn, true, 'Silence… stopping in 3s');
+      } else if (!hasSpoken) {
+        micSetActive(btn, true, level > 3 ? '🔴 Recording…' : 'Listening… (speak now)');
+      }
+    }, 100) : null;
+
+    // If AudioContext unavailable, auto-stop after 30s as fallback
+    const noAnalyserTimer = !analyser ? setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), 30000) : null;
+
+    recorder.ondataavailable = e => {
+      if (e.data.size > 0) chunks.push(e.data);
+
+      // Real-time interim transcription — send full recording so far every ~2.5s after speech starts
+      // Full blob ensures valid audio headers are always included
+      const now = Date.now();
+      if (hasSpoken && chunks.length >= 10 && now - lastInterimSent > 2500) {
+        lastInterimSent = now;
+        const partialBlob = new Blob([...chunks], { type: mimeType });
+        const form = new FormData();
+        form.append('audio', partialBlob, ext);
+        fetch('/api/voice/transcribe', { method: 'POST', body: form })
+          .then(r => r.json())
+          .then(d => { if (d.text && recorder.state !== 'inactive') input.value = d.text; })
+          .catch(() => {});
+      }
+    };
+
     recorder.onstop = async () => {
-      clearInterval(silenceInterval); clearTimeout(silenceTimer);
+      clearInterval(silenceInterval);
+      clearTimeout(silenceTimer);
+      clearTimeout(noAnalyserTimer);
       if (audioCtx) audioCtx.close().catch(() => {});
       stream.getTracks().forEach(t => t.stop());
-      micSetActive(btn, false); _micBtn = null;
+      micSetActive(btn, false);
+      _micBtn = null;
       btn.textContent = '⏳';
-      btn.onclick = () => toggleMic(btn, input.id); // restore onclick
+      btn.onclick = () => toggleMic(btn, input.id);
       if (!chunks.length) { btn.textContent = '🎤'; return; }
-      const mimeType = recorder.mimeType || 'audio/webm';
+
+      // Final full transcription
       const blob = new Blob(chunks, { type: mimeType });
-      const ext = mimeType.includes('ogg') ? 'voice.ogg' : 'voice.webm';
-      const form = new FormData(); form.append('audio', blob, ext);
+      const form = new FormData();
+      form.append('audio', blob, ext);
       try {
         const r = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
         const d = await r.json();
         if (d.text) {
           input.value = d.text;
           if (_voiceMode && input.id === 'chatInput') { _voiceSpeakNext = true; setTimeout(sendChat, 500); }
-          else if (input.id === 'chatInput' && d.text.trim()) {
-            // Non-voice-mode single shot: auto-send after mic transcription
-            setTimeout(sendChat, 400);
-          }
+          else if (input.id === 'chatInput' && d.text.trim()) { setTimeout(sendChat, 400); }
         } else if (d.error) {
           console.warn('[MIC] Transcription error:', d.error);
           input.placeholder = '⚠ Transcription failed — check GROQ_API_KEY';
@@ -1731,13 +1770,17 @@ async function recordAndTranscribe(btn, input) {
       btn.textContent = '🎤';
     };
 
-    recorder.start(250); // collect in 250ms chunks for reliable stop
-    const maxTimer = setTimeout(() => recorder.stop(), 60000);
-    btn.onclick = () => { clearTimeout(maxTimer); clearInterval(silenceInterval); clearTimeout(silenceTimer); recorder.stop(); };
+    recorder.start(250);
+    const maxTimer = setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), 60000);
+    btn.onclick = () => {
+      clearTimeout(maxTimer); clearInterval(silenceInterval);
+      clearTimeout(silenceTimer); clearTimeout(noAnalyserTimer);
+      if (recorder.state !== 'inactive') recorder.stop();
+    };
   } catch(e) {
     micSetActive(btn, false);
     if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      alert('Microphone access denied. Please click the 🔒 or camera icon in your browser address bar and allow microphone access, then try again.');
+      alert('Microphone access denied. Please click the 🔒 icon in your browser address bar and allow microphone access, then try again.');
     } else {
       console.warn('Mic error:', e.message);
     }

@@ -47,6 +47,100 @@ const fs = require('fs');
 const cron = require('node-cron');
 const yaml = require('js-yaml');
 
+// =============================================================================
+// LIVE CONFIG RESOLVER — never fail silently on missing integration config
+// Checks: process.env → live .env re-read → init-company.yaml
+// Call resolveConfig('KEY', 'ALIAS1', ...) anywhere instead of process.env.KEY
+// =============================================================================
+function resolveConfig(...keys) {
+  // 1. process.env — fastest; covers hot-reloads via /api/settings/save
+  for (const k of keys) {
+    if (process.env[k] && process.env[k].trim()) return process.env[k].trim();
+  }
+  // 2. Re-read .env from disk — catches values set before server start that didn't load
+  if (ENV_PATH && fs.existsSync(ENV_PATH)) {
+    try {
+      const envMap = {};
+      for (const line of fs.readFileSync(ENV_PATH, 'utf8').split('\n')) {
+        const eq = line.indexOf('=');
+        if (eq < 0 || line.trim().startsWith('#')) continue;
+        const k = line.slice(0, eq).trim();
+        let v = line.slice(eq + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1).replace(/\\"/g, '"');
+        if (k && v) envMap[k] = v;
+      }
+      for (const k of keys) {
+        if (envMap[k]) { process.env[k] = envMap[k]; return envMap[k]; } // hot-reload into process.env
+      }
+    } catch(_) {}
+  }
+  // 3. configs/init-company.yaml — fallback if configure.html wrote real values there
+  try {
+    const yamlPath = path.join(__dirname, '..', 'configs', 'init-company.yaml');
+    if (fs.existsSync(yamlPath)) {
+      const cfg = yaml.load(fs.readFileSync(yamlPath, 'utf8')) || {};
+      const bridges = cfg.integrations?.communication_bridges || [];
+      const yamlLookup = {
+        VAULT_PATH:         cfg.integrations?.knowledge_base?.path,
+        OBSIDIAN_VAULT_PATH:cfg.integrations?.knowledge_base?.path,
+        TG_TOKEN:           bridges.find(b => b.type === 'telegram')?.token,
+        DISCORD_TOKEN:      bridges.find(b => b.type === 'discord')?.token,
+        FIRECRAWL_API_KEY:  cfg.integrations?.web_intelligence?.api_key,
+        SUPABASE_URL:       cfg.integrations?.persistent_memory?.url,
+        SUPABASE_KEY:       cfg.integrations?.persistent_memory?.key,
+        VOICEBOX_API_KEY:   cfg.integrations?.voice_comms?.api_key,
+        COMPANY_NAME:       cfg.company_name,
+        OWNER_NAME:         cfg.owner,
+      };
+      for (const k of keys) {
+        const v = yamlLookup[k];
+        if (v && !String(v).includes('${')) { process.env[k] = v; return String(v); }
+      }
+    }
+  } catch(_) {}
+  return null;
+}
+
+// Build a human-readable summary of all configured integrations with real values.
+// Injected into every agent system prompt so agents never ask "what's the vault path?"
+function getIntegrationSummary() {
+  const vault   = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
+  const memDir  = path.join(__dirname, '..', 'memory');
+  const email   = resolveConfig('GMAIL_ADDRESS');
+  const tgToken = resolveConfig('TG_TOKEN');
+  const tgChat  = resolveConfig('TG_CHAT_ID');
+  const slack   = resolveConfig('SLACK_BOT_TOKEN');
+  const notion  = resolveConfig('NOTION_TOKEN');
+  const stripe  = resolveConfig('STRIPE_SECRET_KEY');
+  const sbUrl   = resolveConfig('SUPABASE_URL');
+  const brave   = resolveConfig('BRAVE_API_KEY', 'BRAVE_SEARCH_API_KEY');
+  const ghToken = resolveConfig('GITHUB_TOKEN');
+  const ghUser  = resolveConfig('GITHUB_USER');
+  const ghRepo  = resolveConfig('GITHUB_REPO');
+  const openai  = resolveConfig('OPENAI_API_KEY');
+  const groq    = resolveConfig('GROQ_API_KEY');
+  const anthropic = resolveConfig('ANTHROPIC_API_KEY');
+
+  const lines = [
+    `Memory dir: ${memDir}  →  [[ACTION:memory_write|file.md|content]]  [[ACTION:memory_read|file.md]]`,
+  ];
+  if (vault)   lines.push(`Obsidian vault: ${vault}  →  [[ACTION:obsidian_write|Title|Content]]  [[ACTION:obsidian_append|Title|More]]`);
+  if (email)   lines.push(`Gmail: ${email}  →  [[ACTION:send_email|to@example.com|Subject|Body]]`);
+  if (tgToken) lines.push(`Telegram: configured${tgChat ? ` (TG_CHAT_ID=${tgChat})` : ' (TG_CHAT_ID not set — cannot send proactively)'}  →  [[ACTION:telegram_send|Message]]`);
+  if (slack)   lines.push(`Slack: configured  →  [[ACTION:slack_send|#channel|Message]]`);
+  if (notion)  lines.push(`Notion: configured  →  [[ACTION:notion_create|Title|Content]]`);
+  if (stripe)  lines.push(`Stripe: configured  →  [[ACTION:stripe_revenue]]  [[ACTION:stripe_create_invoice|email|cents|desc]]`);
+  if (sbUrl)   lines.push(`Supabase: ${sbUrl}  →  [[ACTION:supabase_query|table|filter]]  [[ACTION:supabase_insert|table|data]]`);
+  if (brave)   lines.push(`Web search (Brave): configured  →  [[ACTION:web_search|query]]`);
+  if (ghToken) lines.push(`GitHub: ${ghUser || '?'}/${ghRepo || '?'}  →  [[ACTION:github_push|msg]]  [[ACTION:github_create_issue|title|body]]`);
+  if (openai)  lines.push(`OpenAI: configured (GPT + Whisper TTS)`);
+  if (groq)    lines.push(`Groq: configured (fast inference + Whisper)`);
+  if (anthropic) lines.push(`Anthropic Claude: configured`);
+  if (!vault && !email && !tgToken && !slack && !sbUrl) lines.push('⚠ No integrations configured yet — add keys via Settings panel.');
+
+  return `CONFIGURED INTEGRATIONS & PATHS (use these directly — do not ask the user for paths you already have):\n${lines.join('\n')}`;
+}
+
 // Optional integrations — loaded only if keys are present
 let nodemailer, SlackWebClient, NotionClient, google, stripe;
 try { nodemailer = require('nodemailer'); } catch(_) {}
@@ -493,12 +587,15 @@ HONESTY RULES — never break these:
 - If an action fails, report the error message. Don't pretend it succeeded.
 - If you don't know something, search for it with [[ACTION:web_search|query]] rather than guessing.
 ${process.env.GMAIL_ADDRESS ? `- Company email address: ${process.env.GMAIL_ADDRESS} — use this exact address when referring to email. Never use any other address.` : '- No company email configured yet. Do not invent one.'}
-- Configured integrations you CAN use right now:${process.env.TG_TOKEN ? ` Telegram (send updates with [[ACTION:telegram_send|message]], chat_id=${process.env.TG_CHAT_ID||'not set'}${!process.env.TG_CHAT_ID?' — TG_CHAT_ID missing, cannot send proactively':''});` : ' Telegram: NOT configured;'}${process.env.SLACK_BOT_TOKEN ? ` Slack ([[ACTION:slack_send|#channel|message]]);` : ''}${process.env.NOTION_TOKEN ? ` Notion ([[ACTION:notion_create|Title|Content]]);` : ''}${process.env.STRIPE_SECRET_KEY ? ` Stripe ([[ACTION:stripe_revenue]] [[ACTION:stripe_create_invoice|email|cents|desc]]);` : ''}${process.env.SUPABASE_URL ? ` Supabase ([[ACTION:supabase_query|table|filter]]);` : ''}${(process.env.BRAVE_API_KEY||process.env.BRAVE_SEARCH_API_KEY) ? ` Web search ([[ACTION:web_search|query]]);` : ''}${process.env.GITHUB_TOKEN ? ` GitHub ([[ACTION:github_push|msg]] [[ACTION:github_create_issue|title|body]]);` : ''}
-- If an integration is NOT listed above as configured, do NOT attempt to use it and do NOT pretend it exists.
+- If an integration is NOT listed in your integration summary below, do NOT attempt to use it and do NOT pretend it exists.
+
+${getIntegrationSummary()}
 
 ${getAgentRosterContext()}
 
 ${AGENT_ACTION_REFERENCE}
+
+MISSION: You work 24/7 with your full team toward three outcomes — (1) the best platform that money can buy: technically excellent, constantly improving, built right; (2) a thriving business: growing revenue, delighted customers, strong metrics; (3) a platform that everyone who touches it absolutely loves: intuitive, reliable, fast. Delegate ruthlessly. Your C-Suite each command their own specialist pool. Trust them to execute. Your job is direction, key decisions, and ensuring nothing slips.
 
 PERSONALITY: Sharp, confident, direct. Talk like a founder — not a corporate bot. Short sentences, plain language, no jargon. Match the energy: casual message = casual reply, strategy question = strategic answer. No bullet lists or formal headers unless the question actually needs it. When asked about your team, list them by name and role — you know exactly who you have. Never say you can't see other agents.
 
@@ -803,7 +900,7 @@ function shellExec(command) {
 function getAgentRosterContext() {
   const csuite = Object.entries(AGENT_PERSONAS)
     .filter(([id]) => id !== 'CEO')
-    .map(([id, p]) => `  ${p.emoji} ${id} — ${p.name} (${p.role}): dispatch with [[ACTION:agent_dispatch|${id}|your task]]`)
+    .map(([id, p]) => `  ${p.emoji} ${id} — ${p.name} (${p.role}): [[ACTION:agent_dispatch|${id}|task]]`)
     .join('\n');
 
   const deployedCustom = Object.values(state.agents)
@@ -811,25 +908,50 @@ function getAgentRosterContext() {
     .map(a => `  🤖 ${a.id} — ${a.name || a.id}: ${a.role || ''} (status: ${a.currentTask || 'Idle'})`)
     .join('\n');
 
+  // OpenClaw 187-agent pool grouped by category
+  const ocLines = (SKILL_MANIFEST.openclaw_agents || []).map(cat => {
+    const catId = cat.id.replace('openclaw:', '');
+    const agentNames = (OPENCLAW_CATEGORY_AGENTS[catId] || '').split(',').map(s => s.trim()).filter(Boolean);
+    const preview = agentNames.slice(0, 4).map(n => n.replace(/\s*\([^)]+\)/, '')).join(', ');
+    const more = agentNames.length > 4 ? ` +${agentNames.length - 4} more` : '';
+    return `  ${cat.id} (${agentNames.length}): ${preview}${more} → [[ACTION:openclaw_dispatch|${catId}|agent-name|task]]`;
+  }).join('\n');
+  const totalOC = getAgentPool().length;
+
+  // VoltAgent Codex 136+ subagents
+  const codexLines = (SKILL_MANIFEST.codex_subagents || []).map(c => {
+    const count = c.desc.match(/^(\d+)/)?.[1] || '?';
+    const label = c.desc.split('—')[0].trim();
+    return `  ${c.id} (${count} agents): ${label} → [[ACTION:codex_dispatch|${c.id}|task]]`;
+  }).join('\n');
+  const totalCodex = (SKILL_MANIFEST.codex_subagents || []).reduce((s, c) => s + parseInt(c.desc.match(/^(\d+)/)?.[1] || 0), 0);
+
+  // Built-in always-on specialists
   const subCats = {};
   Object.entries(SUBAGENT_DEFINITIONS || {}).forEach(([id, d]) => {
     if (!subCats[d.cat]) subCats[d.cat] = [];
     subCats[d.cat].push(`${d.icon||'•'} ${d.label} (${id})`);
   });
   const subList = Object.entries(subCats).map(([cat, items]) =>
-    `  ${cat}: ${items.slice(0,4).join(', ')}${items.length > 4 ? ` +${items.length-4} more` : ''}`
+    `  ${cat}: ${items.slice(0, 4).join(', ')}${items.length > 4 ? ` +${items.length-4} more` : ''}`
   ).join('\n');
   const totalSubs = Object.keys(SUBAGENT_DEFINITIONS || {}).length;
 
-  return `YOUR AGENT TEAM — dispatch any of these directly from your reply:
+  return `YOUR FULL AGENT TEAM — all dispatches are REAL server calls. Use them proactively. You are the orchestrator.
 
-C-SUITE (${Object.keys(AGENT_PERSONAS).length - 1} executives):
+C-SUITE (${Object.keys(AGENT_PERSONAS).length - 1} executives with full dispatch capability):
 ${csuite}
 
-SPECIALIST SUBAGENT POOL (${totalSubs}+ experts — dispatch with [[ACTION:subagent|agent-id|task]]):
+OPENCLAW SPECIALIST POOL (${totalOC} agents, 23 categories — deploy any on demand):
+${ocLines}
+
+VOLTAGENT CODEX POOL (${totalCodex}+ technical specialists, 10 categories):
+${codexLines}
+
+BUILT-IN SPECIALISTS (${totalSubs} always-on — [[ACTION:subagent|agent-id|task]]):
 ${subList}
 ${deployedCustom ? `\nDEPLOYED CUSTOM AGENTS:\n${deployedCustom}` : ''}
-AGENT DISPATCH IS REAL: when you use [[ACTION:agent_dispatch|CFO|question]] or [[ACTION:subagent|seo-analyst|task]], the server actually calls that agent and returns its response for you to synthesise. Use this proactively — you are the orchestrator.`;
+ORCHESTRATION: Delegate to C-Suite for strategic execution. Use pool agents for specialist depth. C-Suite members sub-delegate to their domain specialists autonomously. Your job is direction, decisions, and ensuring outcomes.`;
 }
 
 // ── Action reference injected into every agent system prompt ───────────────
@@ -846,7 +968,7 @@ STRIPE:   [[ACTION:stripe_create_invoice|email|amount_cents|Description]] [[ACTI
 GITHUB:   [[ACTION:github_push|Commit message]] [[ACTION:github_create_issue|Title|Body]]
 SUPABASE: [[ACTION:supabase_query|table|{"col":"val"}]] [[ACTION:supabase_insert|table|{"col":"val"}]]
 SHELL:    [[ACTION:shell|any shell command]]
-AGENTS:   [[ACTION:agent_dispatch|CFO|What is our burn rate?]] [[ACTION:agent_dispatch|CTO|Review this]] [[ACTION:subagent|seo-analyst|Audit site]] [[ACTION:agent_broadcast|Message to all agents]]
+AGENTS:   [[ACTION:agent_dispatch|CFO|What is our burn rate?]] [[ACTION:agent_dispatch|CTO|Review this]] [[ACTION:subagent|seo-analyst|Audit site]] [[ACTION:agent_broadcast|Message to all agents]] [[ACTION:openclaw_dispatch|marketing|Echo|Write blog post about X]] [[ACTION:openclaw_dispatch|finance|Invoice Manager|Generate invoice for client Y]] [[ACTION:codex_dispatch|codex:quality-security|Security audit this endpoint]] [[ACTION:codex_dispatch|codex:core-dev|Design this API]]
 
 Chain multiple actions in one reply. Data-returning actions (web_search, web_fetch, shell, hubspot_get_deals, stripe_revenue, supabase_query, memory_read, file_read, agent_dispatch, subagent, agent_broadcast) return results you will see and synthesise into your response.`;
 
@@ -866,15 +988,16 @@ async function executeActions(reply, systemPromptForSynthesis) {
       switch (type) {
         // ── Files & Memory ────────────────────────────────────────────
         case 'obsidian_write': {
-          const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
-          if (!vaultPath) { label = '⚠️ OBSIDIAN_VAULT_PATH not set in .env'; break; }
+          const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
+          if (!vaultPath) { label = '⚠️ Obsidian vault path not configured — add VAULT_PATH to Settings'; break; }
           const safe = (parts[1] || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
+          fs.mkdirSync(vaultPath, { recursive: true });
           fs.writeFileSync(path.join(vaultPath, `${safe}.md`), `# ${safe}\n\n${parts.slice(2).join('\n')}\n`, 'utf8');
           label = `✅ Written to Obsidian: **${safe}.md**`; break;
         }
         case 'obsidian_append': {
-          const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
-          if (!vaultPath) { label = '⚠️ OBSIDIAN_VAULT_PATH not set in .env'; break; }
+          const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
+          if (!vaultPath) { label = '⚠️ Obsidian vault path not configured — add VAULT_PATH to Settings'; break; }
           const safe = (parts[1] || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
           fs.appendFileSync(path.join(vaultPath, `${safe}.md`), `\n${parts.slice(2).join('\n')}\n`, 'utf8');
           label = `✅ Appended to Obsidian: **${safe}.md**`; break;
@@ -1051,43 +1174,115 @@ async function executeActions(reply, systemPromptForSynthesis) {
           label = `🖥️ \`${cmd}\``; isData = true; break;
         }
 
-        // ── Agent Dispatch — call C-Suite agent and get response ──────
+        // ── Agent Dispatch — call C-Suite agent (or pool agent by id) ─
         case 'agent_dispatch': {
           const agentId = (parts[1] || '').toUpperCase();
           const task = parts.slice(2).join('|');
           if (!task) { label = `⚠️ agent_dispatch requires a task: [[ACTION:agent_dispatch|CFO|task here]]`; break; }
           const persona = AGENT_PERSONAS[agentId];
-          if (!persona) {
-            label = `⚠️ Agent "${agentId}" not found. Available: ${Object.keys(AGENT_PERSONAS).filter(k=>k!=='CEO').join(', ')}`;
-            break;
+          if (persona) {
+            const agentSysPrompt = getAgentSystemPrompt(agentId);
+            const agentReply = await callAI([{ role: 'user', content: task }], agentSysPrompt);
+            data = agentReply;
+            label = `${persona.emoji} ${persona.name} responded`;
+            isData = true;
+            io.emit('chat:message', { role: 'assistant', content: agentReply, source: `${persona.emoji} ${persona.name}`, agentId, timestamp: new Date().toISOString() });
+            if (state.agents[agentId]) { state.agents[agentId].lastActive = new Date().toISOString(); state.agents[agentId].currentTask = task.slice(0, 60); io.emit('agents:update', Object.values(state.agents)); }
+          } else {
+            // Fall through to OpenClaw pool — match by id or name
+            const rawId = parts[1] || '';
+            const pool = getAgentPool();
+            const poolAgent = pool.find(a =>
+              a.id.toLowerCase() === rawId.toLowerCase() ||
+              a.name.toLowerCase() === rawId.toLowerCase() ||
+              a.id.toUpperCase() === agentId
+            );
+            if (poolAgent) {
+              const poolSysPrompt = `You are ${poolAgent.name}, a specialist in ${poolAgent.role || poolAgent.category}. Part of the OmniClaw agent pool. Be concise, practical, and expert. Produce actionable output.\n\n${AGENT_ACTION_REFERENCE}`;
+              const poolReply = await callAI([{ role: 'user', content: task }], poolSysPrompt);
+              data = poolReply;
+              label = `🤖 ${poolAgent.name} (${poolAgent.category}) responded`;
+              isData = true;
+              io.emit('chat:message', { role: 'assistant', content: poolReply, source: `🤖 ${poolAgent.name}`, agentId: poolAgent.id, timestamp: new Date().toISOString() });
+            } else {
+              label = `⚠️ Agent "${rawId}" not found. C-Suite: ${Object.keys(AGENT_PERSONAS).filter(k=>k!=='CEO').join(', ')}. For pool agents use [[ACTION:openclaw_dispatch|category|agent-name|task]]`;
+            }
           }
-          const agentSysPrompt = getAgentSystemPrompt(agentId);
-          const agentReply = await callAI([{ role: 'user', content: task }], agentSysPrompt);
-          data = agentReply;
-          label = `${persona.emoji} ${persona.name} responded`;
-          isData = true;
-          // Emit to dashboard so user sees the agent responding
-          io.emit('chat:message', { role: 'assistant', content: agentReply, source: `${persona.emoji} ${persona.name}`, agentId, timestamp: new Date().toISOString() });
-          if (state.agents[agentId]) { state.agents[agentId].lastActive = new Date().toISOString(); state.agents[agentId].currentTask = task.slice(0, 60); io.emit('agents:update', Object.values(state.agents)); }
           break;
         }
 
-        // ── Subagent Dispatch — call specialist from the 130+ pool ────
+        // ── Subagent Dispatch — built-in specialists or OpenClaw by name
         case 'subagent': {
           const subId = parts[1];
           const task = parts.slice(2).join('|');
           if (!task) { label = `⚠️ subagent requires a task: [[ACTION:subagent|seo-analyst|task here]]`; break; }
           const def = (SUBAGENT_DEFINITIONS || {})[subId];
-          if (!def) {
-            const available = Object.keys(SUBAGENT_DEFINITIONS || {}).slice(0, 10).join(', ');
-            label = `⚠️ Subagent "${subId}" not found. Sample IDs: ${available}`;
+          if (def) {
+            const subSysPrompt = `${def.prompt}\n\n${AGENT_ACTION_REFERENCE}`;
+            const subReply = await callAI([{ role: 'user', content: task }], subSysPrompt);
+            data = subReply;
+            label = `${def.icon||'🤖'} ${def.label} responded`;
+            isData = true;
+          } else {
+            // Try matching an OpenClaw pool agent by id
+            const pool = getAgentPool();
+            const poolAgent = pool.find(a => a.id === subId || a.name.toLowerCase() === subId.toLowerCase());
+            if (poolAgent) {
+              const poolSysPrompt = `You are ${poolAgent.name}, a specialist in ${poolAgent.role || poolAgent.category}. Part of the OmniClaw agent pool. Be concise, practical, and expert.\n\n${AGENT_ACTION_REFERENCE}`;
+              const poolReply = await callAI([{ role: 'user', content: task }], poolSysPrompt);
+              data = poolReply;
+              label = `🤖 ${poolAgent.name} responded`;
+              isData = true;
+            } else {
+              const available = Object.keys(SUBAGENT_DEFINITIONS || {}).slice(0, 10).join(', ');
+              label = `⚠️ Subagent "${subId}" not found. Built-in sample IDs: ${available}. For pool agents use [[ACTION:openclaw_dispatch|category|agent-name|task]]`;
+            }
+          }
+          break;
+        }
+
+        // ── OpenClaw Pool Dispatch — call specific pool agent by category+name
+        case 'openclaw_dispatch': {
+          const cat = (parts[1] || '').toLowerCase();
+          const agentName = (parts[2] || '').toLowerCase();
+          const task = parts.slice(3).join('|');
+          if (!task) { label = `⚠️ openclaw_dispatch: [[ACTION:openclaw_dispatch|category|agent-name|task]]`; break; }
+          const pool = getAgentPool();
+          let poolAgent = pool.find(a => a.category === cat && a.name.toLowerCase() === agentName);
+          if (!poolAgent) poolAgent = pool.find(a => a.category === cat && a.name.toLowerCase().includes(agentName));
+          if (!poolAgent) poolAgent = pool.find(a => a.name.toLowerCase().includes(agentName) || a.id.includes(agentName));
+          if (!poolAgent) {
+            const catAgents = pool.filter(a => a.category === cat).map(a => a.name).join(', ');
+            label = `⚠️ Pool agent "${agentName}" not found in "${cat}". Available: ${catAgents || 'unknown category'}`;
             break;
           }
-          const subSysPrompt = `${def.prompt}\n\n${AGENT_ACTION_REFERENCE}`;
-          const subReply = await callAI([{ role: 'user', content: task }], subSysPrompt);
-          data = subReply;
-          label = `${def.icon||'🤖'} ${def.label} responded`;
+          const ocSysPrompt = `You are ${poolAgent.name}, a specialist in ${poolAgent.role || poolAgent.category}. You are part of the OmniClaw platform, deployed as a temporary specialist. Be concise, practical, and produce expert-level output directly relevant to the task.\n\n${AGENT_ACTION_REFERENCE}`;
+          const ocReply = await callAI([{ role: 'user', content: task }], ocSysPrompt);
+          data = ocReply;
+          label = `🤖 ${poolAgent.name} (${poolAgent.category}) responded`;
           isData = true;
+          io.emit('chat:message', { role: 'assistant', content: ocReply, source: `🤖 ${poolAgent.name}`, agentId: poolAgent.id, timestamp: new Date().toISOString() });
+          break;
+        }
+
+        // ── VoltAgent Codex Dispatch — call Codex specialist pool by category
+        case 'codex_dispatch': {
+          const codexCat = parts[1];
+          const task = parts.slice(2).join('|');
+          if (!task) { label = `⚠️ codex_dispatch: [[ACTION:codex_dispatch|codex:category|task]]`; break; }
+          const codexDef = (SKILL_MANIFEST.codex_subagents || []).find(s => s.id === codexCat);
+          if (!codexDef) {
+            const available = (SKILL_MANIFEST.codex_subagents || []).map(s => s.id).join(', ');
+            label = `⚠️ Codex category "${codexCat}" not found. Available: ${available}`;
+            break;
+          }
+          const agentCount = codexDef.desc.match(/^(\d+)/)?.[1] || 'multiple';
+          const codexSysPrompt = `You are a VoltAgent Codex specialist — ${codexDef.id} (${agentCount} expert agents in this domain: ${codexDef.desc}). Provide deeply expert, actionable, production-ready output. Be precise and concise.\n\n${AGENT_ACTION_REFERENCE}`;
+          const codexReply = await callAI([{ role: 'user', content: task }], codexSysPrompt);
+          data = codexReply;
+          label = `⚡ Codex ${codexCat} responded`;
+          isData = true;
+          io.emit('chat:message', { role: 'assistant', content: codexReply, source: `⚡ Codex ${codexCat}`, agentId: codexCat, timestamp: new Date().toISOString() });
           break;
         }
 
@@ -1508,22 +1703,22 @@ function getSkillContextForAgent(agentId) {
       ? `\nCODEX SUBAGENTS available for your role — install from github.com/VoltAgent/awesome-codex-subagents. Invoke by explicitly delegating: "Use the [subagent-name] subagent to [task]". Ask the CTO for a full briefing on available agents and patterns.`
       : '';
 
-  // OpenClaw Agent Pool note — per-exec targeted categories
+  // OpenClaw Agent Pool — per-exec targeted categories with live dispatch syntax
   const ocExec = OPENCLAW_EXEC_CATEGORIES[agentId];
   const openclawNote = ocExec ? `
 
-OPENCLAW AGENT POOL — 187 temporary specialist agents on demand (github.com/mergisi/awesome-openclaw-agents)
-Your priority categories for ${ocExec.focus}:
+OPENCLAW SPECIALIST POOL — dispatch any agent directly from your reply (your priority domains for ${ocExec.focus}):
 ${ocExec.cats.map(cat => {
-  const agents = OPENCLAW_CATEGORY_AGENTS[cat] || '';
-  const count = (SKILL_MANIFEST.openclaw_agents.find(s => s.id === `openclaw:${cat}`) || {}).desc || '';
-  return `  • ${cat.toUpperCase()}: ${agents}`;
+  const agentNames = (OPENCLAW_CATEGORY_AGENTS[cat] || '').split(',').map(s => s.replace(/\s*\([^)]+\)/, '').trim()).filter(Boolean);
+  const preview = agentNames.slice(0, 5).join(', ');
+  const more = agentNames.length > 5 ? ` +${agentNames.length - 5} more` : '';
+  return `  • ${cat.toUpperCase()} (${agentNames.length}): ${preview}${more}\n    → Dispatch: [[ACTION:openclaw_dispatch|${cat}|agent-name|task here]]`;
 }).join('\n')}
 
-To deploy any agent temporarily: POST /api/openclaw/agents/deploy with { "agentId": "<id>", "category": "<category>" }
-To see all 187 agents: GET /api/openclaw/agents | To see what's deployed: GET /api/openclaw/agents/deployed
-Once deployed, agents live in agents/temp/ and can be used as specialised workers until undeployed.
-Browse the full pool from the Agent Pool panel in the dashboard.` : '';
+CODEX SUBAGENTS also available — use [[ACTION:codex_dispatch|codex:category|task]] for deep technical work.
+Ask the CTO for the full Codex briefing.
+
+YOU HAVE REAL DISPATCH CAPABILITY: embed [[ACTION:openclaw_dispatch|category|agent-name|task]] in your reply and the server calls that specialist and returns their output for you to synthesise. Sub-delegate proactively — do not do everything yourself.` : '';
 
   return `
 AVAILABLE TOOLS & SKILLS (shared pool — use any that help):
@@ -1554,12 +1749,13 @@ async function generateTTSBuffer(text) {
   const clean = stripForSpeech(text);
 
   // 1. Try OpenAI TTS (most reliable, onyx = male)
-  if (process.env.OPENAI_API_KEY) {
+  const openaiKey = resolveConfig('OPENAI_API_KEY');
+  if (openaiKey) {
     try {
       const r = await axios.post(
         'https://api.openai.com/v1/audio/speech',
         { model: 'tts-1', voice: 'onyx', input: clean.slice(0, 4096), response_format: 'mp3' },
-        { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+        { headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
       );
       console.log('[TTS] OpenAI TTS success');
       return { buffer: Buffer.from(r.data), ext: 'mp3', mime: 'audio/mpeg' };
@@ -1567,14 +1763,15 @@ async function generateTTSBuffer(text) {
   }
 
   // 2. Try Groq PlayAI TTS
-  if (process.env.GROQ_API_KEY) {
+  const groqKey = resolveConfig('GROQ_API_KEY');
+  if (groqKey) {
     for (const fmt of ['wav', 'mp3']) {
       try {
-        const voice = process.env.VOICE_GROQ_VOICE || 'Fritz-PlayAI';
+        const voice = resolveConfig('VOICE_GROQ_VOICE') || 'Fritz-PlayAI';
         const r = await axios.post(
           'https://api.groq.com/openai/v1/audio/speech',
           { model: 'playai-tts', voice, input: clean.slice(0, 2000), response_format: fmt },
-          { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
+          { headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' }, responseType: 'arraybuffer', timeout: 30000 }
         );
         console.log(`[TTS] Groq TTS success (${fmt})`);
         return { buffer: Buffer.from(r.data), ext: fmt, mime: fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav' };
@@ -1636,8 +1833,9 @@ function getAgentSystemPrompt(agentId) {
   return `You are the ${persona.name}, ${persona.role} of ${state.company}, talking with ${state.owner}.
 Personality: ${persona.style}. Short sentences, plain language. Only use structure/lists when genuinely needed.
 Company: ${state.company} | Owner: ${state.owner}
-${process.env.GMAIL_ADDRESS ? `Company email: ${process.env.GMAIL_ADDRESS} — always use this exact address. Never invent email addresses.` : 'No company email configured — do not invent email addresses.'}
-Configured integrations:${process.env.TG_TOKEN ? ` Telegram (TG_CHAT_ID=${process.env.TG_CHAT_ID||'not set'});` : ''}${process.env.GMAIL_ADDRESS ? ` Gmail;` : ''}${process.env.SLACK_BOT_TOKEN ? ` Slack;` : ''}${process.env.STRIPE_SECRET_KEY ? ` Stripe;` : ''}${(process.env.BRAVE_API_KEY||process.env.BRAVE_SEARCH_API_KEY) ? ` Web search;` : ''}
+
+${getIntegrationSummary()}
+
 ${profile ? profile.slice(0, 500) : ''}
 ${skillContext}
 ${AGENT_ACTION_REFERENCE}`;
@@ -2657,7 +2855,7 @@ app.post('/api/dashboard/widgets', (req, res) => {
 // =============================================================================
 async function runSelfImprovement() {
   console.log('[IMPROVE] 🌙 Overnight self-improvement sweep starting...');
-  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+  const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
   const unresolvedErrors = errorLog.filter(e => !e.resolved);
   const recentDecisions = state.decisions.slice(-10);
 
@@ -2711,7 +2909,7 @@ app.post('/api/improve/run', async (req, res) => {
 // PROACTIVE CEO — autonomous company analysis, business plan, self-improvement
 // =============================================================================
 async function runProactiveCEO() {
-  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || process.env.VAULT_PATH;
+  const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
   if (!vaultPath) return; // Can't save without vault
 
   console.log('[CEO] Running proactive analysis...');
