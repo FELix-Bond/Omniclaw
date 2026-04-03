@@ -544,7 +544,14 @@ app.get('/api/memory/:file', (req, res) => {
   if (!allowed.includes(req.params.file)) return res.status(403).json({ error: 'Forbidden' });
   const filePath = path.join(MEMORY_DIR, req.params.file);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
-  res.json({ content: fs.readFileSync(filePath, 'utf8') });
+  // Substitute shell-style ${VAR} placeholders so SOUL.md reflects actual config
+  let content = fs.readFileSync(filePath, 'utf8');
+  content = content
+    .replace(/\$\{COMPANY_NAME\}/g, state.company || process.env.COMPANY_NAME || '')
+    .replace(/\$\{OWNER_NAME\}/g,  state.owner   || process.env.OWNER_NAME   || '')
+    .replace(/\$\{MISSION\}/g,     process.env.MISSION    || '')
+    .replace(/\$\{VAULT_PATH\}/g,  resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH') || '');
+  res.json({ content });
 });
 
 // =============================================================================
@@ -596,6 +603,11 @@ function getSystemPrompt() {
   const profile = readAgentProfile('CEO') || '';
   const ownerProfile = readOwnerProfile();
   return `You are TommyClaw, the AI CEO of ${state.company}, talking directly with ${state.owner}. You are part of the OmniClaw platform — an autonomous executive AI stack. Your website is tommyclaw.com.
+
+IDENTITY BOUNDARY — critical:
+- You are the CEO of ${state.company} ONLY. Your entire context, memory, and decisions are scoped to ${state.company} and OmniClaw.
+- The Obsidian vault may contain notes about OTHER projects or platforms (e.g. FELix, or other businesses belonging to ${state.owner}). Treat those as off-limits. Do NOT read, reference, summarise, or act on content that belongs to another platform or project. If a vault search returns content clearly about another platform, discard it and say so.
+- If you see references to "FELix", "felix-app", or any platform that is not ${state.company}, ignore them entirely. They are separate products in a separate context.
 
 HONESTY RULES — never break these:
 - Never invent domain names, email addresses, credentials, or infrastructure details unless explicitly told them in this conversation.
@@ -1341,8 +1353,11 @@ async function executeActions(reply, systemPromptForSynthesis) {
         }
 
         case 'obsidian_search': {
-          const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
-          if (!vaultPath) { label = '⚠️ Obsidian vault not configured — add VAULT_PATH to Settings'; break; }
+          const vaultBase = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
+          if (!vaultBase) { label = '⚠️ Obsidian vault not configured — add VAULT_PATH to Settings'; break; }
+          // Scope searches to a company-specific subfolder to prevent cross-platform bleed
+          const vaultSubpath = resolveConfig('VAULT_SUBPATH');
+          const vaultPath = vaultSubpath ? path.join(vaultBase, vaultSubpath) : vaultBase;
           const query = parts.slice(1).join('|').trim().toLowerCase();
           if (!query) { label = '⚠️ obsidian_search requires a query: [[ACTION:obsidian_search|#marketing]] or [[ACTION:obsidian_search|project name]]'; break; }
           function walkVault(dir, found = []) {
