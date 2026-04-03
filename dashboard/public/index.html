@@ -698,26 +698,24 @@
             <div style="margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
               <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:8px">PULL A MODEL</div>
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px">
-                ${[
-                  {n:'gemma4',l:'Gemma 4'},
-                  {n:'gemma4:2b',l:'Gemma 4 2B'},
-                  {n:'gemma3:9b',l:'Gemma 3 9B'},
-                  {n:'gemma3:27b',l:'Gemma 3 27B'},
-                  {n:'llama3.3:70b',l:'Llama 3.3 70B'},
-                  {n:'llama3.2',l:'Llama 3.2'},
-                  {n:'llama3.1:8b',l:'Llama 3.1 8B'},
-                  {n:'mistral',l:'Mistral'},
-                  {n:'phi4',l:'Phi-4'},
-                  {n:'phi4-mini',l:'Phi-4 Mini'},
-                  {n:'qwen2.5:7b',l:'Qwen 2.5 7B'},
-                  {n:'qwen2.5:72b',l:'Qwen 2.5 72B'},
-                  {n:'qwen2.5-coder',l:'Qwen Coder'},
-                  {n:'deepseek-r1:7b',l:'DeepSeek R1 7B'},
-                  {n:'deepseek-r1:14b',l:'DeepSeek R1 14B'},
-                  {n:'codellama',l:'Code Llama'},
-                  {n:'nomic-embed-text',l:'Nomic Embed'},
-                  {n:'command-r',l:'Command-R'},
-                ].map(m => `<button onclick="ollamaPull('${m.n}')" title="Pull ${m.n}" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ ${m.l}</button>`).join('')}
+                <button onclick="ollamaPull('gemma4')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Gemma 4</button>
+                <button onclick="ollamaPull('gemma4:2b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Gemma 4 2B</button>
+                <button onclick="ollamaPull('gemma3:9b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Gemma 3 9B</button>
+                <button onclick="ollamaPull('gemma3:27b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Gemma 3 27B</button>
+                <button onclick="ollamaPull('llama3.3:70b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Llama 3.3 70B</button>
+                <button onclick="ollamaPull('llama3.2')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Llama 3.2</button>
+                <button onclick="ollamaPull('llama3.1:8b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Llama 3.1 8B</button>
+                <button onclick="ollamaPull('mistral')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Mistral</button>
+                <button onclick="ollamaPull('phi4')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Phi-4</button>
+                <button onclick="ollamaPull('phi4-mini')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Phi-4 Mini</button>
+                <button onclick="ollamaPull('qwen2.5:7b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Qwen 2.5 7B</button>
+                <button onclick="ollamaPull('qwen2.5:72b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Qwen 2.5 72B</button>
+                <button onclick="ollamaPull('qwen2.5-coder')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Qwen Coder</button>
+                <button onclick="ollamaPull('deepseek-r1:7b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ DeepSeek R1 7B</button>
+                <button onclick="ollamaPull('deepseek-r1:14b')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ DeepSeek R1 14B</button>
+                <button onclick="ollamaPull('codellama')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Code Llama</button>
+                <button onclick="ollamaPull('nomic-embed-text')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Nomic Embed</button>
+                <button onclick="ollamaPull('command-r')" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ Command-R</button>
               </div>
               <div id="ollamaPullStatus" style="font-size:0.78rem;color:var(--muted);margin-top:8px"></div>
             </div>
@@ -2409,7 +2407,7 @@ function switchSettingsTab(tab, el) {
   if (tab === 'integrations') loadIntegrations();
   if (tab === 'memory') loadMemory();
   if (tab === 'errors') loadErrorLog();
-  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); loadCloudProviders(); }
+  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); loadCloudProviders(); loadCurrentModel(); }
 }
 
 async function loadVoiceConfig() {
@@ -2625,6 +2623,33 @@ async function pullSelectedModel() {
   document.getElementById('ollamaPullStatus');
 }
 
+async function loadCurrentModel() {
+  const sel = document.getElementById('modelSwitcherSelect');
+  const statusEl = document.getElementById('modelSwitchStatus');
+  if (!sel) return;
+  try {
+    const d = await getProviderStatus();
+    const current = d['MODEL_CHAIN_1']?.set
+      ? (await fetch('/api/provider/status').then(r => r.json()))['MODEL_CHAIN_1']
+      : null;
+    // Re-fetch full value via settings for exact match
+    const sr = await fetch('/api/settings');
+    const sd = await sr.json();
+    const chain1 = sd.settings?.find(s => s.key === 'MODEL_CHAIN_1')?.value || '';
+    if (chain1) {
+      // Try exact match first, then prefix match
+      let found = Array.from(sel.options).find(o => o.value === chain1);
+      if (!found) found = Array.from(sel.options).find(o => chain1.startsWith(o.value) || o.value.startsWith(chain1));
+      if (found) {
+        sel.value = found.value;
+        if (statusEl) statusEl.textContent = `Active: ${found.text}`;
+      } else if (statusEl) {
+        statusEl.textContent = `Active: ${chain1} (custom)`;
+      }
+    }
+  } catch(_) {}
+}
+
 function loadCloudProviders() {
   const el = document.getElementById('cloudProviderList');
   if (!el) return;
@@ -2662,15 +2687,24 @@ function loadCloudProviders() {
   providers.forEach(p => checkProviderKey(p.id));
 }
 
+let _providerStatusCache = null;
+async function getProviderStatus() {
+  if (_providerStatusCache) return _providerStatusCache;
+  try {
+    const r = await fetch('/api/provider/status');
+    _providerStatusCache = await r.json();
+    setTimeout(() => { _providerStatusCache = null; }, 30000); // cache 30s
+    return _providerStatusCache;
+  } catch(_) { return {}; }
+}
+
 async function checkProviderKey(keyName) {
   const statusEl = document.getElementById(`cp-status-${keyName}`);
   if (!statusEl) return;
   try {
-    const r = await fetch('/api/settings');
-    const d = await r.json();
-    const s = d.settings?.find(s => s.key === keyName);
-    if (s?.value && s.value.length > 8) {
-      statusEl.textContent = '✓ Configured';
+    const d = await getProviderStatus();
+    if (d[keyName]?.set) {
+      statusEl.textContent = `✓ Configured (${d[keyName].hint})`;
       statusEl.style.color = 'var(--green)';
     } else {
       statusEl.textContent = '⚠ Not set';

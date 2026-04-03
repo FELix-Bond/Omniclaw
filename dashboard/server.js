@@ -2796,6 +2796,21 @@ app.post('/api/model/switch', (req, res) => {
   res.json({ ok: true, model: value });
 });
 
+// Provider key status — checks resolveConfig (env + .env + yaml), never exposes full key
+app.get('/api/provider/status', (req, res) => {
+  const keys = [
+    'ANTHROPIC_API_KEY','OPENAI_API_KEY','GROQ_API_KEY',
+    'GOOGLE_AI_API_KEY','OPENROUTER_API_KEY',
+    'MODEL_CHAIN_1','MODEL_CHAIN_2','MODEL_CHAIN_3',
+  ];
+  const result = {};
+  for (const k of keys) {
+    const v = resolveConfig(k);
+    result[k] = v ? { set: true, hint: v.slice(0, 6) + '...' } : { set: false };
+  }
+  res.json(result);
+});
+
 app.get('/api/metaclaw/status', async (req, res) => {
   const metaHost = resolveConfig('METACLAW_HOST') || 'http://localhost:30000';
   const enabled = resolveConfig('METACLAW_ENABLED') === 'true';
