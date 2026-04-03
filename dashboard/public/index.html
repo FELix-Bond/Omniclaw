@@ -1359,6 +1359,13 @@ async function renderLLMChain(settings, providerStatus) {
   // providerStatus from /api/provider/status covers Keychain + yaml, not just .env
   const ps = providerStatus || {};
 
+  // Fetch full MODEL_CHAIN values via /api/chain (resolveConfig — covers Keychain too)
+  let chainValues = { MODEL_CHAIN_1: '', MODEL_CHAIN_2: '', MODEL_CHAIN_3: '' };
+  try {
+    const cr = await fetch('/api/chain');
+    chainValues = await cr.json();
+  } catch(_) {}
+
   // Chain slots (MODEL_CHAIN_1/2/3)
   const chainSlots = [
     { label: 'PRIMARY',    key: 'MODEL_CHAIN_1' },
@@ -1412,7 +1419,8 @@ async function renderLLMChain(settings, providerStatus) {
   }
 
   chainEl.innerHTML = chainSlots.map((slot, i) => {
-    const val = envMap[slot.key] || '';
+    // Prefer /api/chain value (covers Keychain + configure.html setup) over .env-only envMap
+    const val = chainValues[slot.key] || envMap[slot.key] || '';
     const badge = val ? ' <span style="color:var(--green);font-size:0.85rem">✓</span>' : '';
 
     const optgroupsHtml = Object.values(groupedByProvider).map(group => {

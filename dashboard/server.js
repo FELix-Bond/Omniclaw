@@ -2841,6 +2841,15 @@ app.get('/api/provider/status', (req, res) => {
   res.json(result);
 });
 
+// Model chain values — returns full MODEL_CHAIN_1/2/3 values (not secrets)
+app.get('/api/chain', (req, res) => {
+  res.json({
+    MODEL_CHAIN_1: resolveConfig('MODEL_CHAIN_1') || '',
+    MODEL_CHAIN_2: resolveConfig('MODEL_CHAIN_2') || '',
+    MODEL_CHAIN_3: resolveConfig('MODEL_CHAIN_3') || '',
+  });
+});
+
 app.get('/api/metaclaw/status', async (req, res) => {
   const metaHost = resolveConfig('METACLAW_HOST') || 'http://localhost:30000';
   const enabled = resolveConfig('METACLAW_ENABLED') === 'true';

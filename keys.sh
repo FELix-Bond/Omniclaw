@@ -44,8 +44,11 @@ KEY_META["VOICEBOX_API_KEY"]="Voicebox.io|https://voicebox.io/dashboard|paid"
 KEY_META["SUPABASE_URL"]="Supabase URL|https://supabase.com/dashboard|free"
 KEY_META["SUPABASE_KEY"]="Supabase Anon Key|https://supabase.com/dashboard|free"
 KEY_META["GITHUB_TOKEN"]="GitHub Token|https://github.com/settings/tokens/new?scopes=repo,workflow|free"
+KEY_META["MODEL_CHAIN_1"]="Primary AI model|configure.html|config"
+KEY_META["MODEL_CHAIN_2"]="Fallback AI model 1|configure.html|config"
+KEY_META["MODEL_CHAIN_3"]="Fallback AI model 2|configure.html|config"
 
-ALL_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN VOICEBOX_API_KEY SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN)
+ALL_KEYS=(ANTHROPIC_API_KEY GOOGLE_AI_API_KEY OPENAI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY MINIMAX_API_KEY MISTRAL_API_KEY FIRECRAWL_API_KEY SKILLSMP_API_KEY TG_TOKEN DISCORD_TOKEN VOICEBOX_API_KEY SUPABASE_URL SUPABASE_KEY GITHUB_TOKEN MODEL_CHAIN_1 MODEL_CHAIN_2 MODEL_CHAIN_3)
 
 # =============================================================================
 # KEYCHAIN PRIMITIVES
