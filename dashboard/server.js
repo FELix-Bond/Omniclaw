@@ -3109,14 +3109,40 @@ async function selfHeal() {
 loadOrgChart();
 loadDecisions();
 
-server.listen(PORT, '0.0.0.0', () => {
+function startOnAvailablePort(preferredPort, maxTries = 10) {
+  return new Promise((resolve, reject) => {
+    const net = require('net');
+    let attempt = preferredPort;
+    const tryPort = () => {
+      const probe = net.createServer();
+      probe.once('error', () => {
+        attempt++;
+        if (attempt >= preferredPort + maxTries) {
+          reject(new Error(`No free port found in range ${preferredPort}–${preferredPort + maxTries - 1}`));
+        } else {
+          console.log(`   Port ${attempt - 1} in use — trying ${attempt}...`);
+          tryPort();
+        }
+      });
+      probe.once('listening', () => {
+        probe.close(() => {
+          server.listen(attempt, '0.0.0.0', () => resolve(attempt));
+        });
+      });
+      probe.listen(attempt, '0.0.0.0');
+    };
+    tryPort();
+  });
+}
+
+startOnAvailablePort(PORT).then(boundPort => {
   console.log(`\n🦾 OmniClaw Dashboard`);
   console.log(`   Company:   ${state.company}`);
-  console.log(`   Port:      http://localhost:${PORT}`);
-  console.log(`   Open:      http://localhost:${PORT}`);
+  console.log(`   Port:      ${boundPort}${boundPort !== PORT ? ` (preferred ${PORT} was taken)` : ''}`);
+  console.log(`   Open:      http://localhost:${boundPort}`);
   if (process.env.AUTO_OPEN_DASHBOARD !== 'false') {
     const { exec } = require('child_process');
-    setTimeout(() => exec(`open http://localhost:${PORT}`, () => {}), 800);
+    setTimeout(() => exec(`open http://localhost:${boundPort}`, () => {}), 800);
   }
   console.log(`   Agents:    ${Object.keys(state.agents).length} active`);
   console.log(`   Heartbeat: ${state.heartbeat}`);
@@ -3190,4 +3216,7 @@ server.listen(PORT, '0.0.0.0', () => {
   // Check for updates (non-blocking, fires 5s after startup)
   setTimeout(checkForUpdate, 5000);
   console.log('');
+}).catch(err => {
+  console.error(`\n[FATAL] Could not bind to any port: ${err.message}`);
+  process.exit(1);
 });

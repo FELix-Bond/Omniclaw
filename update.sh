@@ -38,6 +38,26 @@ echo "   Current version: $CURRENT_VERSION"
 echo "   Latest version:  $LATEST_VERSION"
 echo ""
 
+# --- Ensure .env exists with required defaults (runs even if already up-to-date) ---
+if [ ! -f "$CURRENT_DIR/.env" ]; then
+  echo "Creating default .env (add your API keys manually)..."
+  cat > "$CURRENT_DIR/.env" <<'ENVEOF'
+# OmniClaw Configuration — add your API keys here
+DASHBOARD_PORT=3001
+COMPANY_NAME=OmniClaw
+OWNER_NAME=Owner
+AUTO_OPEN_DASHBOARD=true
+METACLAW_ENABLED=true
+DECISION_MODE=full
+ENVEOF
+  echo -e "${GREEN}✅ .env created at $CURRENT_DIR/.env${NC}"
+else
+  if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
+    echo "DASHBOARD_PORT=3001" >> "$CURRENT_DIR/.env"
+    echo "   Added DASHBOARD_PORT=3001 to existing .env"
+  fi
+fi
+
 if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
   echo -e "${GREEN}You're already on the latest version ($CURRENT_VERSION). Nothing to do.${NC}"
   exit 0
@@ -102,28 +122,6 @@ chmod +x "$CURRENT_DIR/update.sh" 2>/dev/null || true
 [ -f "$BACKUP_DIR/.env" ]          && cp "$BACKUP_DIR/.env" "$CURRENT_DIR/.env"
 [ -d "$BACKUP_DIR/memory" ]        && cp -r "$BACKUP_DIR/memory/." "$CURRENT_DIR/memory/"
 [ -d "$BACKUP_DIR/csuite" ]        && cp -r "$BACKUP_DIR/csuite/." "$CURRENT_DIR/agents/csuite/"
-
-# --- Ensure .env exists with required defaults ---
-if [ ! -f "$CURRENT_DIR/.env" ]; then
-  echo ""
-  echo "Creating default .env (no API keys — add them manually)..."
-  cat > "$CURRENT_DIR/.env" <<'ENVEOF'
-# OmniClaw Configuration — add your API keys here
-DASHBOARD_PORT=3001
-COMPANY_NAME=OmniClaw
-OWNER_NAME=Owner
-AUTO_OPEN_DASHBOARD=true
-METACLAW_ENABLED=true
-DECISION_MODE=full
-ENVEOF
-  echo -e "${GREEN}✅ .env created at $CURRENT_DIR/.env${NC}"
-else
-  # Ensure DASHBOARD_PORT is set in existing .env
-  if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
-    echo "DASHBOARD_PORT=3001" >> "$CURRENT_DIR/.env"
-    echo "   Added DASHBOARD_PORT=3001 to existing .env"
-  fi
-fi
 
 # Load .env so restart uses correct PORT
 set -o allexport
