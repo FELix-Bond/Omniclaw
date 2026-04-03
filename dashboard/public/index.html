@@ -542,6 +542,7 @@
         <div class="settings-tabs">
           <div class="settings-tab active" onclick="switchSettingsTab('general',this)">General</div>
           <div class="settings-tab" onclick="switchSettingsTab('aimodels',this)">AI Models</div>
+          <div class="settings-tab" onclick="switchSettingsTab('voice',this)">Voice</div>
           <div class="settings-tab" onclick="switchSettingsTab('integrations',this)">Integrations</div>
           <div class="settings-tab" onclick="switchSettingsTab('memory',this)">Memory</div>
           <div class="settings-tab" onclick="switchSettingsTab('errors',this)" id="errorsTab">Errors <span id="errorsTabBadge" style="display:none;background:var(--red);color:#fff;border-radius:8px;font-size:0.65rem;padding:1px 5px;margin-left:4px">0</span></div>
@@ -611,9 +612,11 @@
             <div id="metaclawStatus" style="font-size:0.82rem;color:var(--muted);padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:10px">Click "Check Status" to detect MetaClaw</div>
             <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px;font-weight:600">SETUP (one-time):</div>
             <div style="font-family:monospace;font-size:0.73rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);margin-bottom:10px">
-              pip install metaclaw<br>
-              metaclaw setup  <span style="color:var(--muted)"># choose: skills_only (no GPU needed)</span><br>
-              metaclaw start  <span style="color:var(--muted)"># runs proxy at localhost:30000</span>
+              ./update.sh   <span style="color:var(--muted)"># installs MetaClaw automatically (Python 3.10+ via Homebrew)</span><br>
+                            <span style="color:var(--muted)"># or manually:</span><br>
+              python3.11 -m venv memory/metaclaw-venv<br>
+              memory/metaclaw-venv/bin/pip install -e /path/to/MetaClaw<br>
+              memory/metaclaw-venv/bin/metaclaw start --port 30000 --mode skills_only
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;cursor:pointer">
@@ -760,6 +763,10 @@
             <div id="cloudProviderList" style="display:grid;gap:8px"></div>
           </div>
 
+        </div>
+
+        <!-- VOICE TAB -->
+        <div id="stab-voice" style="display:none">
           <!-- VOICE CONFIG -->
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px" id="voiceConfigCard">
             <div style="font-weight:700;margin-bottom:4px">🎙️ Voice</div>
@@ -1346,7 +1353,7 @@ async function loadSettings() {
   } catch(e) { document.getElementById('settingsGrid').innerHTML = `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
 }
 
-function renderLLMChain(settings, providerStatus) {
+async function renderLLMChain(settings, providerStatus) {
   const envMap = {};
   settings.forEach(s => { envMap[s.key] = s.value; });
   // providerStatus from /api/provider/status covers Keychain + yaml, not just .env
@@ -1354,73 +1361,76 @@ function renderLLMChain(settings, providerStatus) {
 
   // Chain slots (MODEL_CHAIN_1/2/3)
   const chainSlots = [
-    { label: '1st', key: 'MODEL_CHAIN_1' },
-    { label: '2nd', key: 'MODEL_CHAIN_2' },
-    { label: '3rd', key: 'MODEL_CHAIN_3' },
+    { label: 'PRIMARY',    key: 'MODEL_CHAIN_1' },
+    { label: 'FALLBACK 1', key: 'MODEL_CHAIN_2' },
+    { label: 'FALLBACK 2', key: 'MODEL_CHAIN_3' },
   ];
 
   const chainEl = document.getElementById('llmChain');
   if (!chainEl) return;
 
+  // Build per-provider model lists
+  const PROVIDER_MODELS = {
+    anthropic:   ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    openai:      ['gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
+    groq:        ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it', 'deepseek-r1-distill-llama-70b'],
+    gemini:      ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    openrouter:  ['google/gemma-3-12b-it:free', 'meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-4:free', 'deepseek/deepseek-r1:free'],
+  };
+
+  // Fetch Ollama pulled models
+  let ollamaModels = [];
+  try {
+    const omRes = await fetch('/api/ollama/models');
+    const omData = await omRes.json();
+    ollamaModels = (omData.models || []).map(m => m.name);
+  } catch(e) {}
+
+  // Build availableOptions: [{provider, value, label}] per provider
+  const availableOptions = [];
+  for (const p of LLM_PROVIDERS) {
+    const hasAccess = p.keyEnv ? (!!envMap[p.keyEnv] || !!ps[p.keyEnv]?.set) : true;
+    if (!hasAccess) continue;
+    if (p.id === 'ollama') {
+      for (const m of ollamaModels) {
+        availableOptions.push({ provider: p, value: `ollama::${m}`, label: m });
+      }
+    } else {
+      const models = PROVIDER_MODELS[p.id] || [];
+      for (const m of models) {
+        availableOptions.push({ provider: p, value: `${p.id}::${m}`, label: m });
+      }
+    }
+  }
+
+  // Group options by provider for optgroups
+  const groupedByProvider = {};
+  for (const opt of availableOptions) {
+    const pid = opt.provider.id;
+    if (!groupedByProvider[pid]) groupedByProvider[pid] = { provider: opt.provider, opts: [] };
+    groupedByProvider[pid].opts.push(opt);
+  }
+
   chainEl.innerHTML = chainSlots.map((slot, i) => {
     const val = envMap[slot.key] || '';
-    const colonIdx = val.indexOf('::');
-    const providerId = colonIdx > 0 ? val.slice(0, colonIdx) : '';
-    const model = colonIdx > 0 ? val.slice(colonIdx + 2) : '';
-    const meta = LLM_PROVIDERS.find(p => p.id === providerId);
-    const hasKey = meta ? (meta.keyEnv ? (!!envMap[meta.keyEnv] || !!ps[meta.keyEnv]?.set) : true) : false;
-    const isConfigured = val && hasKey;
+    const badge = val ? ' <span style="color:var(--green);font-size:0.85rem">✓</span>' : '';
 
-    const colors = ['var(--accent)', 'var(--green)', 'var(--yellow)'];
-    const color = colors[i];
+    const optgroupsHtml = Object.values(groupedByProvider).map(group => {
+      const p = group.provider;
+      const optionsHtml = group.opts.map(opt => {
+        const sel = opt.value === val ? ' selected' : '';
+        return `<option value="${opt.value}"${sel}>${opt.label}</option>`;
+      }).join('');
+      return `<optgroup label="${p.icon} ${p.label}">${optionsHtml}</optgroup>`;
+    }).join('');
 
-    if (isConfigured) {
-      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid ${color};border-radius:8px">
-        <span style="font-size:1.1rem">${meta.icon}</span>
-        <div>
-          <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${meta.label}</div>
-          <div style="font-size:0.75rem;color:var(--muted);font-family:monospace">${model || meta.defaultModel}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-          <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(61,214,140,0.15);color:var(--green)">✓ Active</span>
-          <span style="font-size:0.68rem;color:var(--muted)">${meta.badge}</span>
-        </div>
-      </div>`;
-    } else if (val && !hasKey) {
-      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--yellow);border-radius:8px">
-        <span style="font-size:1.1rem">${meta ? meta.icon : '⚠️'}</span>
-        <div>
-          <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${meta ? meta.label : providerId}</div>
-          <div style="font-size:0.75rem;color:var(--yellow)">Missing API key: ${meta?.keyEnv || 'unknown'}</div>
-        </div>
-        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(240,180,41,0.15);color:var(--yellow)">⚠ No Key</span>
-      </div>`;
-    } else {
-      // No explicit chain set — check if any provider key is configured (auto-detection)
-      const autoProvider = LLM_PROVIDERS.find(p => p.keyEnv ? (!!envMap[p.keyEnv] || !!ps[p.keyEnv]?.set) : false);
-      if (i === 0 && autoProvider) {
-        // Show auto-detected primary provider
-        return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--green);border-radius:8px">
-          <span style="font-size:1.1rem">${autoProvider.icon}</span>
-          <div>
-            <div style="font-weight:600;font-size:0.85rem">${slot.label} — ${autoProvider.label} <span style="font-weight:400;color:var(--muted)">(auto-detected)</span></div>
-            <div style="font-size:0.75rem;color:var(--muted);font-family:monospace">${autoProvider.defaultModel} — set ${slot.key} to pin a specific model</div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-            <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:rgba(61,214,140,0.15);color:var(--green)">✓ Active</span>
-            <span style="font-size:0.68rem;color:var(--muted)">Auto</span>
-          </div>
-        </div>`;
-      }
-      return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;opacity:0.6">
-        <span style="font-size:1.1rem">➕</span>
-        <div>
-          <div style="font-weight:600;font-size:0.85rem;color:var(--muted)">${slot.label} — Optional fallback</div>
-          <div style="font-size:0.75rem;color:var(--muted)">Set ${slot.key} = provider::model (e.g. groq::llama-3.3-70b-versatile)</div>
-        </div>
-        <span style="font-size:0.7rem;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--muted)">Not set</span>
-      </div>`;
-    }
+    return `<div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid ${val ? 'var(--accent)' : 'var(--border)'};border-radius:8px">
+      <div style="font-size:0.8rem;font-weight:700;color:var(--muted)">${i===0?'PRIMARY':i===1?'FALLBACK 1':'FALLBACK 2'}${badge}</div>
+      <select onchange="setChainSlot('${slot.key}', this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:0.83rem;cursor:pointer;width:100%">
+        <option value="">— Not set —</option>
+        ${optgroupsHtml}
+      </select>
+    </div>`;
   }).join('');
 
   // All providers grid
@@ -1450,6 +1460,11 @@ function renderLLMChain(settings, providerStatus) {
       </div>
     </div>`;
   }).join('');
+}
+
+async function setChainSlot(key, value) {
+  await fetch('/api/settings/save', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ key, value }) });
+  loadSettings();
 }
 
 function filterSettings(terms) {
@@ -2409,14 +2424,15 @@ socket.on('briefing:sent', (data) => {
 function switchSettingsTab(tab, el) {
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
-  ['general','aimodels','integrations','memory','errors'].forEach(t => {
+  ['general','aimodels','voice','integrations','memory','errors'].forEach(t => {
     const tabEl = document.getElementById('stab-' + t);
     if (tabEl) tabEl.style.display = t === tab ? 'block' : 'none';
   });
   if (tab === 'integrations') loadIntegrations();
   if (tab === 'memory') loadMemory();
   if (tab === 'errors') loadErrorLog();
-  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); loadCloudProviders(); loadCurrentModel(); }
+  if (tab === 'voice') loadVoiceConfig();
+  if (tab === 'aimodels') { loadOllamaModels(); loadCloudProviders(); loadCurrentModel(); checkMetaclaw(); }
 }
 
 async function loadVoiceConfig() {
