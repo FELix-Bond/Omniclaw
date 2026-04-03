@@ -68,65 +68,61 @@ if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
   echo "   Added DASHBOARD_PORT=3001 to .env"
 fi
 
-# --- MetaClaw: install + start if not running (runs even if already up-to-date) ---
+# --- MetaClaw: start if already installed, otherwise schedule background install ---
 METACLAW_PORT=30000
-if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
-  echo "MetaClaw not detected on port $METACLAW_PORT — installing..."
-  if ! command -v metaclaw &>/dev/null; then
-    # MetaClaw requires Python >=3.10 — find a compatible interpreter
+METACLAW_VENV="$CURRENT_DIR/memory/metaclaw-venv"
+METACLAW_BIN="$METACLAW_VENV/bin/metaclaw"
+
+if curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
+  echo -e "${GREEN}✅ MetaClaw already running on port $METACLAW_PORT.${NC}"
+elif [ -x "$METACLAW_BIN" ]; then
+  # Already installed — just start it
+  mkdir -p "$CURRENT_DIR/memory/metaclaw" "$CURRENT_DIR/logs"
+  nohup "$METACLAW_BIN" start --host 0.0.0.0 --port "$METACLAW_PORT" --mode skills_only \
+    --skills-path "$CURRENT_DIR/memory/metaclaw" >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
+  echo -e "${GREEN}✅ MetaClaw started (PID $!).${NC}"
+else
+  # Not installed — run install in the background so it never blocks the update
+  echo "MetaClaw not installed — installing in background (logs/metaclaw-install.log)..."
+  (
     PY=""
     for candidate in python3.13 python3.12 python3.11 python3.10; do
-      if command -v "$candidate" &>/dev/null; then
-        PY="$candidate"; break
-      fi
+      command -v "$candidate" &>/dev/null && PY="$candidate" && break
     done
-    # Not found — try Homebrew install of python@3.11
     if [ -z "$PY" ]; then
-      echo "   Python 3.10+ not found — attempting brew install python@3.11..."
       [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
-      [ -f /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)" 2>/dev/null || true
-      if command -v brew &>/dev/null; then
-        brew install python@3.11 --quiet 2>/dev/null && \
-          PY=$(brew --prefix python@3.11)/bin/python3.11
-        [ -x "$PY" ] || PY=""
-      fi
+      command -v brew &>/dev/null && brew install python@3.11 -q 2>/dev/null || true
+      PY=$(command -v python3.11 2>/dev/null || echo "")
     fi
-    if [ -n "$PY" ]; then
-      echo "   Using $PY ($(${PY} --version 2>&1))"
-      METACLAW_VENV="$CURRENT_DIR/memory/metaclaw-venv"
-      METACLAW_SRC=$(mktemp -d)
-      echo "   Cloning MetaClaw from GitHub..."
-      if git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null; then
-        "$PY" -m venv "$METACLAW_VENV" 2>/dev/null && \
-          "$METACLAW_VENV/bin/pip" install --quiet -e "$METACLAW_SRC/metaclaw" && \
-          echo -e "${GREEN}   MetaClaw installed into venv.${NC}" || \
-          echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
-      else
-        echo -e "${YELLOW}   Could not clone MetaClaw from GitHub.${NC}"
-      fi
-    else
-      echo -e "${YELLOW}   Python 3.10+ not available. Run: brew install python@3.11${NC}"
-    fi
-  fi
-  METACLAW_BIN="$CURRENT_DIR/memory/metaclaw-venv/bin/metaclaw"
-  if [ -x "$METACLAW_BIN" ] || command -v metaclaw &>/dev/null; then
-    [ -x "$METACLAW_BIN" ] || METACLAW_BIN="metaclaw"
+    [ -z "$PY" ] && echo "Python 3.10+ not found — MetaClaw skipped" && exit 0
+    SRC=$(mktemp -d)
+    git clone --depth=1 --quiet https://github.com/aiming-lab/MetaClaw "$SRC/mc" 2>/dev/null || { echo "git clone failed"; exit 1; }
+    "$PY" -m venv "$METACLAW_VENV" && \
+      "$METACLAW_VENV/bin/pip" install --quiet -e "$SRC/mc" || { echo "pip install failed"; exit 1; }
     mkdir -p "$CURRENT_DIR/memory/metaclaw" "$CURRENT_DIR/logs"
-    echo "   Starting MetaClaw on port $METACLAW_PORT..."
-    nohup "$METACLAW_BIN" start \
-      --host 0.0.0.0 \
-      --port "$METACLAW_PORT" \
-      --mode skills_only \
-      --skills-path "$CURRENT_DIR/memory/metaclaw" \
-      >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
-    echo -e "${GREEN}✅ MetaClaw started (PID $!). Logs: logs/metaclaw.log${NC}"
-  fi
-else
-  echo -e "${GREEN}✅ MetaClaw already running on port $METACLAW_PORT.${NC}"
+    nohup "$METACLAW_BIN" start --host 0.0.0.0 --port "$METACLAW_PORT" --mode skills_only \
+      --skills-path "$CURRENT_DIR/memory/metaclaw" >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
+    echo "MetaClaw installed and started (PID $!)."
+  ) >> "$CURRENT_DIR/logs/metaclaw-install.log" 2>&1 &
+  echo "   Install running in background. Check logs/metaclaw-install.log for progress."
 fi
 
 if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-  echo -e "${GREEN}You're already on the latest version ($CURRENT_VERSION). Nothing to do.${NC}"
+  echo -e "${GREEN}You're already on the latest version ($CURRENT_VERSION).${NC}"
+  # Still restore MODEL_CHAIN values from Keychain into .env in case they went missing
+  if command -v security &>/dev/null; then
+    for key in MODEL_CHAIN_1 MODEL_CHAIN_2 MODEL_CHAIN_3; do
+      val=$(security find-generic-password -a omniclaw -s "$key" -w 2>/dev/null || echo "")
+      if [ -n "$val" ]; then
+        if grep -q "^${key}=" "$CURRENT_DIR/.env" 2>/dev/null; then
+          sed -i.bak "s|^${key}=.*|${key}=\"${val}\"|" "$CURRENT_DIR/.env" && rm -f "$CURRENT_DIR/.env.bak"
+        else
+          echo "${key}=\"${val}\"" >> "$CURRENT_DIR/.env"
+        fi
+        echo "   Restored $key from Keychain"
+      fi
+    done
+  fi
   exit 0
 fi
 
