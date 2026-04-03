@@ -68,6 +68,40 @@ if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
   echo "   Added DASHBOARD_PORT=3001 to .env"
 fi
 
+# --- MetaClaw: install + start if not running (runs even if already up-to-date) ---
+METACLAW_PORT=30000
+if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
+  echo "MetaClaw not detected on port $METACLAW_PORT — installing..."
+  if ! command -v metaclaw &>/dev/null; then
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+      PIP=$(command -v pip3 || command -v pip)
+      METACLAW_SRC=$(mktemp -d)
+      echo "   Cloning MetaClaw from GitHub..."
+      git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
+        cd "$METACLAW_SRC/metaclaw" && \
+        $PIP install --quiet -e . && \
+        cd "$CURRENT_DIR" && \
+        echo -e "${GREEN}   MetaClaw installed.${NC}" || \
+        echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
+    else
+      echo -e "${YELLOW}   pip not found — skipping MetaClaw. Install Python 3 and re-run.${NC}"
+    fi
+  fi
+  if command -v metaclaw &>/dev/null; then
+    mkdir -p "$CURRENT_DIR/memory/metaclaw" "$CURRENT_DIR/logs"
+    echo "   Starting MetaClaw on port $METACLAW_PORT..."
+    nohup metaclaw start \
+      --host 0.0.0.0 \
+      --port "$METACLAW_PORT" \
+      --mode skills_only \
+      --skills-path "$CURRENT_DIR/memory/metaclaw" \
+      >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
+    echo -e "${GREEN}✅ MetaClaw started (PID $!). Logs: logs/metaclaw.log${NC}"
+  fi
+else
+  echo -e "${GREEN}✅ MetaClaw already running on port $METACLAW_PORT.${NC}"
+fi
+
 if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
   echo -e "${GREEN}You're already on the latest version ($CURRENT_VERSION). Nothing to do.${NC}"
   exit 0
@@ -147,45 +181,6 @@ cd "$CURRENT_DIR/dashboard" && npm install --silent
 echo ""
 echo -e "${GREEN}✅ OmniClaw updated to v$LATEST_VERSION${NC}"
 echo ""
-
-# --- MetaClaw: install + start if not running ---
-METACLAW_PORT=30000
-if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
-  echo "MetaClaw not detected on port $METACLAW_PORT — installing..."
-
-  # Install from source if metaclaw command missing
-  if ! command -v metaclaw &>/dev/null; then
-    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
-      PIP=$(command -v pip3 || command -v pip)
-      METACLAW_SRC=$(mktemp -d)
-      echo "   Cloning MetaClaw from GitHub..."
-      git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
-        cd "$METACLAW_SRC/metaclaw" && \
-        $PIP install --quiet -e . && \
-        cd "$CURRENT_DIR" && \
-        echo -e "${GREEN}   MetaClaw installed.${NC}" || \
-        echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
-    else
-      echo -e "${YELLOW}   pip not found — skipping MetaClaw install. Install Python 3 and re-run.${NC}"
-    fi
-  fi
-
-  # Start MetaClaw if now available
-  if command -v metaclaw &>/dev/null; then
-    mkdir -p "$CURRENT_DIR/memory/metaclaw"
-    echo "   Starting MetaClaw on port $METACLAW_PORT..."
-    nohup metaclaw start \
-      --host 0.0.0.0 \
-      --port "$METACLAW_PORT" \
-      --mode skills_only \
-      --skills-path "$CURRENT_DIR/memory/metaclaw" \
-      >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
-    METACLAW_PID=$!
-    echo -e "${GREEN}✅ MetaClaw started (PID $METACLAW_PID). Logs: logs/metaclaw.log${NC}"
-  fi
-else
-  echo -e "${GREEN}✅ MetaClaw already running on port $METACLAW_PORT.${NC}"
-fi
 
 # --- Restart dashboard ---
 cd "$CURRENT_DIR"
