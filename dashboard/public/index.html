@@ -676,11 +676,8 @@
                   <option value="ollama::deepseek-r1:14b">DeepSeek R1 14B (local)</option>
                   <option value="ollama::codellama">Code Llama (local)</option>
                 </optgroup>
-                <optgroup label="🔩 BitNet (ultra-fast local)">
-                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-2B-4T-gguf">BitNet 2B-4T (2B, fastest)</option>
-                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-3B-gguf">BitNet 3B (3B)</option>
-                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-large-gguf">BitNet Large (0.7B)</option>
-                  <option value="ollama::hf.co/microsoft/Llama3-8B-1.58-100B-tokens-gguf">BitNet Llama3 8B</option>
+                <optgroup label="🔩 BitNet (requires separate setup — see panel below)">
+                  <option disabled value="">BitNet needs its own inference stack, not Ollama</option>
                 </optgroup>
               </select>
               <button onclick="switchModelNow()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:0.85rem;font-weight:600">⚡ Switch</button>
@@ -732,24 +729,29 @@
               <div style="font-weight:700">🔩 BitNet — Ultra-Fast Local</div>
               <span style="font-size:0.7rem;background:rgba(91,141,238,0.15);color:var(--accent);padding:2px 7px;border-radius:10px">1-bit quantised</span>
             </div>
-            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 10px">Microsoft's 1-bit models run at full CPU speed with minimal RAM. <a href="https://github.com/microsoft/BitNet" target="_blank" style="color:var(--accent)">BitNet GitHub →</a></p>
-            <div style="display:grid;gap:8px">
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 10px">Microsoft's 1-bit models run at CPU speed with minimal RAM. Requires BitNet's own inference stack — not compatible with Ollama directly. <a href="https://github.com/microsoft/BitNet" target="_blank" style="color:var(--accent)">BitNet GitHub →</a></p>
+            <div style="display:grid;gap:8px;margin-bottom:12px">
               ${[
-                {id:'hf.co/microsoft/bitnet-b1.58-2B-4T-gguf', name:'BitNet 2B-4T', desc:'2B params, 4T training tokens — best quality/speed', key:'BITNET_2B'},
-                {id:'hf.co/microsoft/bitnet-b1.58-3B-gguf', name:'BitNet 3B', desc:'3B params — good balance', key:'BITNET_3B'},
-                {id:'hf.co/microsoft/bitnet-b1.58-large-gguf', name:'BitNet Large', desc:'0.7B — fastest, lowest RAM', key:'BITNET_LARGE'},
-                {id:'hf.co/microsoft/Llama3-8B-1.58-100B-tokens-gguf', name:'BitNet Llama3 8B', desc:'Llama 3 architecture, 100B training tokens', key:'BITNET_LLAMA3'},
+                {hf:'microsoft/BitNet-b1.58-2B-4T', name:'BitNet b1.58 2B-4T', desc:'2B params, 4T training tokens — best quality/speed ratio'},
+                {hf:'microsoft/bitnet_b1_58-3B',    name:'BitNet b1.58 3B',     desc:'3B params — good reasoning, low RAM'},
+                {hf:'microsoft/bitnet_b1_58-large', name:'BitNet Large',         desc:'0.7B — ultra-fast, lowest RAM requirement'},
+                {hf:'microsoft/Llama3-8B-1.58-100B-tokens', name:'BitNet Llama3 8B', desc:'Llama 3 architecture, 100B training tokens'},
               ].map(m => `
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
                   <div>
                     <div style="font-size:0.85rem;font-weight:600">${m.name}</div>
-                    <div style="font-size:0.72rem;color:var(--muted)">${m.desc}</div>
+                    <div style="font-size:0.72rem;color:var(--muted)">${m.desc} · <code style="font-size:0.7rem">hf: ${m.hf}</code></div>
                   </div>
-                  <div style="display:flex;gap:6px;flex-shrink:0">
-                    <button onclick="ollamaPull('${m.id}')" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer">⬇ Pull via Ollama</button>
-                    <button onclick="switchToModel('ollama::${m.id}')" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer">⚡ Use</button>
-                  </div>
+                  <a href="https://huggingface.co/${m.hf}" target="_blank" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-decoration:none">HuggingFace →</a>
                 </div>`).join('')}
+            </div>
+            <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:6px">ONE-TIME SETUP</div>
+            <div style="font-family:monospace;font-size:0.72rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);line-height:1.7">
+              git clone --recursive https://github.com/microsoft/BitNet<br>
+              cd BitNet &amp;&amp; pip install -r requirements.txt<br>
+              python setup_env.py --hf-repo microsoft/BitNet-b1.58-2B-4T --quant-type i2_s<br>
+              <span style="color:var(--muted)"># then run inference:</span><br>
+              python run_inference.py -m models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p "your prompt"
             </div>
           </div>
 
