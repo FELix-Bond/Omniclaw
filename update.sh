@@ -93,22 +93,27 @@ if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/nul
     fi
     if [ -n "$PY" ]; then
       echo "   Using $PY ($(${PY} --version 2>&1))"
+      METACLAW_VENV="$CURRENT_DIR/memory/metaclaw-venv"
       METACLAW_SRC=$(mktemp -d)
       echo "   Cloning MetaClaw from GitHub..."
-      git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
-        cd "$METACLAW_SRC/metaclaw" && \
-        "$PY" -m pip install --quiet -e . && \
-        cd "$CURRENT_DIR" && \
-        echo -e "${GREEN}   MetaClaw installed.${NC}" || \
-        echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
+      if git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null; then
+        "$PY" -m venv "$METACLAW_VENV" 2>/dev/null && \
+          "$METACLAW_VENV/bin/pip" install --quiet -e "$METACLAW_SRC/metaclaw" && \
+          echo -e "${GREEN}   MetaClaw installed into venv.${NC}" || \
+          echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
+      else
+        echo -e "${YELLOW}   Could not clone MetaClaw from GitHub.${NC}"
+      fi
     else
       echo -e "${YELLOW}   Python 3.10+ not available. Run: brew install python@3.11${NC}"
     fi
   fi
-  if command -v metaclaw &>/dev/null; then
+  METACLAW_BIN="$CURRENT_DIR/memory/metaclaw-venv/bin/metaclaw"
+  if [ -x "$METACLAW_BIN" ] || command -v metaclaw &>/dev/null; then
+    [ -x "$METACLAW_BIN" ] || METACLAW_BIN="metaclaw"
     mkdir -p "$CURRENT_DIR/memory/metaclaw" "$CURRENT_DIR/logs"
     echo "   Starting MetaClaw on port $METACLAW_PORT..."
-    nohup metaclaw start \
+    nohup "$METACLAW_BIN" start \
       --host 0.0.0.0 \
       --port "$METACLAW_PORT" \
       --mode skills_only \
