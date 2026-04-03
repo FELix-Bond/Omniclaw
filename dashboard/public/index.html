@@ -1334,17 +1334,23 @@ const LLM_PROVIDERS = [
 
 async function loadSettings() {
   try {
-    const r = await fetch('/api/settings');
-    const d = await r.json();
+    const [settingsRes, providerRes] = await Promise.all([
+      fetch('/api/settings'),
+      fetch('/api/provider/status').catch(() => ({ json: () => ({}) })),
+    ]);
+    const d = await settingsRes.json();
+    const providerStatus = await providerRes.json().catch(() => ({}));
     allSettings = (d.settings || []).filter(s => s.type === 'env');
     renderSettings(allSettings);
-    renderLLMChain(allSettings);
+    renderLLMChain(allSettings, providerStatus);
   } catch(e) { document.getElementById('settingsGrid').innerHTML = `<div style="color:var(--muted)">Error: ${e.message}</div>`; }
 }
 
-function renderLLMChain(settings) {
+function renderLLMChain(settings, providerStatus) {
   const envMap = {};
   settings.forEach(s => { envMap[s.key] = s.value; });
+  // providerStatus from /api/provider/status covers Keychain + yaml, not just .env
+  const ps = providerStatus || {};
 
   // Chain slots (MODEL_CHAIN_1/2/3)
   const chainSlots = [
@@ -1362,7 +1368,7 @@ function renderLLMChain(settings) {
     const providerId = colonIdx > 0 ? val.slice(0, colonIdx) : '';
     const model = colonIdx > 0 ? val.slice(colonIdx + 2) : '';
     const meta = LLM_PROVIDERS.find(p => p.id === providerId);
-    const hasKey = meta ? (meta.keyEnv ? !!envMap[meta.keyEnv] : true) : false;
+    const hasKey = meta ? (meta.keyEnv ? (!!envMap[meta.keyEnv] || !!ps[meta.keyEnv]?.set) : true) : false;
     const isConfigured = val && hasKey;
 
     const colors = ['var(--accent)', 'var(--green)', 'var(--yellow)'];
@@ -1391,7 +1397,7 @@ function renderLLMChain(settings) {
       </div>`;
     } else {
       // No explicit chain set — check if any provider key is configured (auto-detection)
-      const autoProvider = LLM_PROVIDERS.find(p => p.keyEnv ? !!envMap[p.keyEnv] : false);
+      const autoProvider = LLM_PROVIDERS.find(p => p.keyEnv ? (!!envMap[p.keyEnv] || !!ps[p.keyEnv]?.set) : false);
       if (i === 0 && autoProvider) {
         // Show auto-detected primary provider
         return `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--green);border-radius:8px">
@@ -1422,8 +1428,8 @@ function renderLLMChain(settings) {
   if (!provEl) return;
 
   provEl.innerHTML = LLM_PROVIDERS.map(p => {
-    const hasKey = p.keyEnv ? !!envMap[p.keyEnv] : true; // Ollama has no key
-    const keyVal = p.keyEnv ? (envMap[p.keyEnv] || '') : '(no key needed)';
+    const hasKey = p.keyEnv ? (!!envMap[p.keyEnv] || !!ps[p.keyEnv]?.set) : true; // Ollama has no key
+    const keyVal = p.keyEnv ? (envMap[p.keyEnv] || (ps[p.keyEnv]?.set ? ps[p.keyEnv].hint + '••••' : '')) : '(no key needed)';
     const maskedKey = keyVal && keyVal !== '(no key needed)' ? keyVal.slice(0, 6) + '••••••••' + keyVal.slice(-4) : keyVal;
     const isInChain = chainSlots.some(slot => (envMap[slot.key] || '').startsWith(p.id + '::'));
 
@@ -1540,8 +1546,11 @@ socket.on('init', (data) => {
   renderDecisions(decisionData.slice(-10), 'recentDecTable');
   renderDecisions(decisionData, 'fullDecTable');
   renderHeartbeats();
-  renderWidgets(); // load widgets on initial page load
+  renderWidgets();
 });
+
+// Fallback: render widgets immediately on load without waiting for socket
+document.addEventListener('DOMContentLoaded', () => { renderWidgets(); });
 
 socket.on('agents:update', (agents) => {
   agentData = agents;
