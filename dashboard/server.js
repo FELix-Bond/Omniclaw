@@ -49,9 +49,19 @@ const yaml = require('js-yaml');
 
 // =============================================================================
 // LIVE CONFIG RESOLVER — never fail silently on missing integration config
-// Checks: process.env → live .env re-read → init-company.yaml
+// Checks: process.env → live .env re-read → macOS Keychain → init-company.yaml
 // Call resolveConfig('KEY', 'ALIAS1', ...) anywhere instead of process.env.KEY
 // =============================================================================
+function keychainGet(key) {
+  // macOS only — reads from Keychain via security CLI
+  if (process.platform !== 'darwin') return null;
+  try {
+    const { execSync } = require('child_process');
+    const val = execSync(`security find-generic-password -a omniclaw -s "${key}" -w 2>/dev/null`, { timeout: 2000, encoding: 'utf8' }).trim();
+    return val || null;
+  } catch(_) { return null; }
+}
+
 function resolveConfig(...keys) {
   // 1. process.env — fastest; covers hot-reloads via /api/settings/save
   for (const k of keys) {
@@ -70,11 +80,16 @@ function resolveConfig(...keys) {
         if (k && v) envMap[k] = v;
       }
       for (const k of keys) {
-        if (envMap[k]) { process.env[k] = envMap[k]; return envMap[k]; } // hot-reload into process.env
+        if (envMap[k]) { process.env[k] = envMap[k]; return envMap[k]; }
       }
     } catch(_) {}
   }
-  // 3. configs/init-company.yaml — fallback if configure.html wrote real values there
+  // 3. macOS Keychain — populated by keys.sh save or configure.html setup script
+  for (const k of keys) {
+    const val = keychainGet(k);
+    if (val) { process.env[k] = val; return val; } // hot-load into process.env for next call
+  }
+  // 4. configs/init-company.yaml — fallback if configure.html wrote real values there
   try {
     const yamlPath = path.join(__dirname, '..', 'configs', 'init-company.yaml');
     if (fs.existsSync(yamlPath)) {

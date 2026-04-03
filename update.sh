@@ -38,11 +38,20 @@ echo "   Current version: $CURRENT_VERSION"
 echo "   Latest version:  $LATEST_VERSION"
 echo ""
 
-# --- Ensure .env exists with required defaults (runs even if already up-to-date) ---
+# --- Ensure .env exists — load from Keychain if possible, else write defaults ---
 if [ ! -f "$CURRENT_DIR/.env" ]; then
-  echo "Creating default .env (add your API keys manually)..."
-  cat > "$CURRENT_DIR/.env" <<'ENVEOF'
-# OmniClaw Configuration — add your API keys here
+  # Try loading from Keychain first (populated by configure.html or keys.sh save)
+  if [ -f "$CURRENT_DIR/keys.sh" ] && command -v security &>/dev/null; then
+    echo "Loading API keys from macOS Keychain → .env ..."
+    bash "$CURRENT_DIR/keys.sh" load 2>/dev/null && \
+      echo -e "${GREEN}✅ Keys loaded from Keychain into .env${NC}" || \
+      echo -e "${YELLOW}   Keychain load failed — writing defaults${NC}"
+  fi
+  # If still no .env, write minimal defaults
+  if [ ! -f "$CURRENT_DIR/.env" ]; then
+    echo "Writing default .env (no API keys — add via Settings or ./keys.sh set)..."
+    cat > "$CURRENT_DIR/.env" <<'ENVEOF'
+# OmniClaw Configuration — add your API keys via Settings or: ./keys.sh set
 DASHBOARD_PORT=3001
 COMPANY_NAME=OmniClaw
 OWNER_NAME=Owner
@@ -50,12 +59,13 @@ AUTO_OPEN_DASHBOARD=true
 METACLAW_ENABLED=true
 DECISION_MODE=full
 ENVEOF
-  echo -e "${GREEN}✅ .env created at $CURRENT_DIR/.env${NC}"
-else
-  if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
-    echo "DASHBOARD_PORT=3001" >> "$CURRENT_DIR/.env"
-    echo "   Added DASHBOARD_PORT=3001 to existing .env"
+    echo -e "${GREEN}✅ .env created${NC}"
   fi
+fi
+# Ensure DASHBOARD_PORT is set in any existing .env
+if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
+  echo "DASHBOARD_PORT=3001" >> "$CURRENT_DIR/.env"
+  echo "   Added DASHBOARD_PORT=3001 to .env"
 fi
 
 if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
