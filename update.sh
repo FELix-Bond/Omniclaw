@@ -73,18 +73,36 @@ METACLAW_PORT=30000
 if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
   echo "MetaClaw not detected on port $METACLAW_PORT — installing..."
   if ! command -v metaclaw &>/dev/null; then
-    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
-      PIP=$(command -v pip3 || command -v pip)
+    # MetaClaw requires Python >=3.10 — find a compatible interpreter
+    PY=""
+    for candidate in python3.13 python3.12 python3.11 python3.10; do
+      if command -v "$candidate" &>/dev/null; then
+        PY="$candidate"; break
+      fi
+    done
+    # Not found — try Homebrew install of python@3.11
+    if [ -z "$PY" ]; then
+      echo "   Python 3.10+ not found — attempting brew install python@3.11..."
+      [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
+      [ -f /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)" 2>/dev/null || true
+      if command -v brew &>/dev/null; then
+        brew install python@3.11 --quiet 2>/dev/null && \
+          PY=$(brew --prefix python@3.11)/bin/python3.11
+        [ -x "$PY" ] || PY=""
+      fi
+    fi
+    if [ -n "$PY" ]; then
+      echo "   Using $PY ($(${PY} --version 2>&1))"
       METACLAW_SRC=$(mktemp -d)
       echo "   Cloning MetaClaw from GitHub..."
       git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
         cd "$METACLAW_SRC/metaclaw" && \
-        $PIP install --quiet -e . && \
+        "$PY" -m pip install --quiet -e . && \
         cd "$CURRENT_DIR" && \
         echo -e "${GREEN}   MetaClaw installed.${NC}" || \
         echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
     else
-      echo -e "${YELLOW}   pip not found — skipping MetaClaw. Install Python 3 and re-run.${NC}"
+      echo -e "${YELLOW}   Python 3.10+ not available. Run: brew install python@3.11${NC}"
     fi
   fi
   if command -v metaclaw &>/dev/null; then
