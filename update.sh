@@ -103,6 +103,34 @@ chmod +x "$CURRENT_DIR/update.sh" 2>/dev/null || true
 [ -d "$BACKUP_DIR/memory" ]        && cp -r "$BACKUP_DIR/memory/." "$CURRENT_DIR/memory/"
 [ -d "$BACKUP_DIR/csuite" ]        && cp -r "$BACKUP_DIR/csuite/." "$CURRENT_DIR/agents/csuite/"
 
+# --- Ensure .env exists with required defaults ---
+if [ ! -f "$CURRENT_DIR/.env" ]; then
+  echo ""
+  echo "Creating default .env (no API keys — add them manually)..."
+  cat > "$CURRENT_DIR/.env" <<'ENVEOF'
+# OmniClaw Configuration — add your API keys here
+DASHBOARD_PORT=3001
+COMPANY_NAME=OmniClaw
+OWNER_NAME=Owner
+AUTO_OPEN_DASHBOARD=true
+METACLAW_ENABLED=true
+DECISION_MODE=full
+ENVEOF
+  echo -e "${GREEN}✅ .env created at $CURRENT_DIR/.env${NC}"
+else
+  # Ensure DASHBOARD_PORT is set in existing .env
+  if ! grep -q "^DASHBOARD_PORT=" "$CURRENT_DIR/.env"; then
+    echo "DASHBOARD_PORT=3001" >> "$CURRENT_DIR/.env"
+    echo "   Added DASHBOARD_PORT=3001 to existing .env"
+  fi
+fi
+
+# Load .env so restart uses correct PORT
+set -o allexport
+# shellcheck disable=SC1090
+source "$CURRENT_DIR/.env" 2>/dev/null || true
+set +o allexport
+
 # --- Re-install dashboard dependencies ---
 echo ""
 echo "Updating dashboard dependencies..."
@@ -112,29 +140,75 @@ echo ""
 echo -e "${GREEN}✅ OmniClaw updated to v$LATEST_VERSION${NC}"
 echo ""
 
-# --- Restart services ---
-cd "$CURRENT_DIR"
+# --- MetaClaw: install + start if not running ---
+METACLAW_PORT=30000
+if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
+  echo "MetaClaw not detected on port $METACLAW_PORT — installing..."
 
-# Docker Compose — preferred if running
-if command -v docker-compose &>/dev/null && docker-compose ps 2>/dev/null | grep -q "omniclaw"; then
-  echo "Docker detected — restarting stack..."
-  docker-compose pull 2>/dev/null || true
-  docker-compose up -d --build
-  echo -e "${GREEN}✅ Docker stack restarted.${NC}"
-  echo "   Dashboard: http://localhost:${DASHBOARD_PORT:-3001}"
-  echo "   MetaClaw:  http://localhost:30000"
-elif command -v docker &>/dev/null && docker ps 2>/dev/null | grep -q "omniclaw"; then
-  echo "Docker detected — restarting stack..."
-  docker compose up -d --build 2>/dev/null || docker-compose up -d --build
-  echo -e "${GREEN}✅ Docker stack restarted.${NC}"
+  # Install from source if metaclaw command missing
+  if ! command -v metaclaw &>/dev/null; then
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+      PIP=$(command -v pip3 || command -v pip)
+      METACLAW_SRC=$(mktemp -d)
+      echo "   Cloning MetaClaw from GitHub..."
+      git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
+        cd "$METACLAW_SRC/metaclaw" && \
+        $PIP install --quiet -e . && \
+        cd "$CURRENT_DIR" && \
+        echo -e "${GREEN}   MetaClaw installed.${NC}" || \
+        echo -e "${YELLOW}   MetaClaw install failed — skipping (dashboard still works without it).${NC}"
+    else
+      echo -e "${YELLOW}   pip not found — skipping MetaClaw install. Install Python 3 and re-run.${NC}"
+    fi
+  fi
+
+  # Start MetaClaw if now available
+  if command -v metaclaw &>/dev/null; then
+    mkdir -p "$CURRENT_DIR/memory/metaclaw"
+    echo "   Starting MetaClaw on port $METACLAW_PORT..."
+    nohup metaclaw start \
+      --host 0.0.0.0 \
+      --port "$METACLAW_PORT" \
+      --mode skills_only \
+      --skills-path "$CURRENT_DIR/memory/metaclaw" \
+      >> "$CURRENT_DIR/logs/metaclaw.log" 2>&1 &
+    METACLAW_PID=$!
+    echo -e "${GREEN}✅ MetaClaw started (PID $METACLAW_PID). Logs: logs/metaclaw.log${NC}"
+  fi
 else
-  # Plain Node fallback
-  echo "Restarting dashboard..."
+  echo -e "${GREEN}✅ MetaClaw already running on port $METACLAW_PORT.${NC}"
+fi
+
+# --- Restart dashboard ---
+cd "$CURRENT_DIR"
+DASH_PORT="${DASHBOARD_PORT:-3001}"
+
+# Docker Compose — use if docker-compose.yml present and docker is available
+if (command -v docker-compose &>/dev/null || command -v docker &>/dev/null) && [ -f "$CURRENT_DIR/docker-compose.yml" ]; then
+  echo "Docker available — restarting OmniClaw stack..."
+  if command -v docker-compose &>/dev/null; then
+    docker-compose -f "$CURRENT_DIR/docker-compose.yml" up -d --build 2>/dev/null || true
+  else
+    docker compose -f "$CURRENT_DIR/docker-compose.yml" up -d --build 2>/dev/null || true
+  fi
+  echo -e "${GREEN}✅ Docker stack restarted.${NC}"
+  echo "   Dashboard: http://localhost:$DASH_PORT"
+  echo "   MetaClaw:  http://localhost:30000"
+else
+  # Plain Node
+  echo "Restarting dashboard (port $DASH_PORT)..."
   pkill -f 'node.*server.js' 2>/dev/null || true
   sleep 1
+  mkdir -p "$CURRENT_DIR/logs"
   nohup node "$CURRENT_DIR/dashboard/server.js" >> "$CURRENT_DIR/logs/dashboard.log" 2>&1 &
-  echo -e "${GREEN}✅ Dashboard restarted (PID $!).${NC}"
-  echo "   Open: http://localhost:${DASHBOARD_PORT:-3001}"
+  DASH_PID=$!
+  sleep 2
+  if kill -0 "$DASH_PID" 2>/dev/null; then
+    echo -e "${GREEN}✅ Dashboard started (PID $DASH_PID).${NC}"
+    echo "   Open: http://localhost:$DASH_PORT"
+  else
+    echo -e "${RED}Dashboard failed to start. Check logs/dashboard.log for errors.${NC}"
+  fi
 fi
 
 echo ""
