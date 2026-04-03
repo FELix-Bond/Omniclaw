@@ -20,16 +20,16 @@ services:
     working_dir: /app
     command: >
       bash -c "
-        pip install --quiet metaclaw &&
+        apt-get update -qq && apt-get install -y -qq git curl &&
+        git clone --depth=1 https://github.com/aiming-lab/MetaClaw /tmp/metaclaw &&
+        cd /tmp/metaclaw &&
+        pip install --quiet -e . &&
         mkdir -p /app/skills /app/memory &&
         metaclaw start
           --host 0.0.0.0
           --port 30000
           --mode skills_only
           --skills-path /app/skills
-          --llm-provider ${METACLAW_LLM_PROVIDER:-openai}
-          --llm-model ${METACLAW_LLM_MODEL:-gpt-4o-mini}
-          --api-key ${ANTHROPIC_API_KEY:-${OPENAI_API_KEY:-}}
       "
     ports:
       - "30000:30000"
