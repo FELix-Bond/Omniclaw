@@ -20,11 +20,16 @@ services:
     working_dir: /app
     command: >
       bash -c "
+        set -e &&
+        echo '[MetaClaw] Installing dependencies...' &&
         apt-get update -qq && apt-get install -y -qq git curl &&
+        echo '[MetaClaw] Cloning from GitHub...' &&
         git clone --depth=1 https://github.com/aiming-lab/MetaClaw /tmp/metaclaw &&
         cd /tmp/metaclaw &&
-        pip install --quiet -e . &&
+        echo '[MetaClaw] Running pip install...' &&
+        pip install -e . &&
         mkdir -p /app/skills /app/memory &&
+        echo '[MetaClaw] Starting server on port 30000...' &&
         metaclaw start
           --host 0.0.0.0
           --port 30000

@@ -147,11 +147,16 @@ else
 COMPANY_NAME="${CN}"
 OWNER_NAME="${OWN}"
 VAULT_PATH="${VP}"
-DASHBOARD_PORT=3000
+DASHBOARD_PORT=3001
 HEARTBEAT_INTERVAL=15m
 BUDGET_LIMIT=\$50
 TIMEZONE=Australia/Sydney
 AUTO_OPEN_DASHBOARD=true
+DECISION_MODE=full
+
+# MetaClaw — AI skill learning proxy
+METACLAW_ENABLED=true
+METACLAW_HOST=http://localhost:30000
 
 # AI Keys
 ANTHROPIC_API_KEY="${ANT}"
@@ -174,7 +179,7 @@ fi
 # Defaults for any missing vars
 COMPANY_NAME="${COMPANY_NAME:-OmniGen_Systems}"
 OWNER_NAME="${OWNER_NAME:-Owner}"
-DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-3001}"
 
 if [ "$DRY_RUN" = true ]; then
   echo -e "\n${BLUE}[DRY RUN] Configuration summary:${NC}"
@@ -567,6 +572,43 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
   done
   ok "${kc_saved} keys saved to Keychain | ${kc_loaded} restored from Keychain → .env"
+fi
+
+# =============================================================================
+# METACLAW — AI skill-learning proxy (port 30000)
+# =============================================================================
+log "[MetaClaw] Checking MetaClaw..."
+METACLAW_PORT=30000
+
+if ! curl -sf --max-time 3 "http://localhost:$METACLAW_PORT/v1/models" >/dev/null 2>&1; then
+  if ! command -v metaclaw &>/dev/null; then
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+      PIP=$(command -v pip3 || command -v pip)
+      METACLAW_SRC=$(mktemp -d)
+      log "[MetaClaw] Installing from GitHub..."
+      git clone --depth=1 https://github.com/aiming-lab/MetaClaw "$METACLAW_SRC/metaclaw" 2>/dev/null && \
+        cd "$METACLAW_SRC/metaclaw" && \
+        $PIP install --quiet -e . && \
+        cd - >/dev/null && \
+        ok "MetaClaw installed" || \
+        warn "MetaClaw install failed — dashboard still works without it"
+    else
+      warn "pip not found — skipping MetaClaw (install Python 3 and re-run)"
+    fi
+  fi
+
+  if command -v metaclaw &>/dev/null; then
+    mkdir -p memory/metaclaw logs
+    nohup metaclaw start \
+      --host 0.0.0.0 \
+      --port "$METACLAW_PORT" \
+      --mode skills_only \
+      --skills-path "$(pwd)/memory/metaclaw" \
+      >> logs/metaclaw.log 2>&1 &
+    ok "MetaClaw started on port $METACLAW_PORT (logs/metaclaw.log)"
+  fi
+else
+  ok "MetaClaw already running on port $METACLAW_PORT"
 fi
 
 # =============================================================================
