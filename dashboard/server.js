@@ -679,8 +679,9 @@ async function callAI(messages, systemPromptOverride) {
     autoFallbacks.push('gemini::gemini-2.0-flash-exp');
   if (!chainVars.some(c => c.startsWith('openrouter')) && process.env.OPENROUTER_API_KEY)
     autoFallbacks.push('openrouter::google/gemma-3-12b-it:free');
-  // Ollama local always last (no key needed)
-  autoFallbacks.push('ollama::llama3.2');
+  // Ollama local always last (no key needed) — try common installed models
+  autoFallbacks.push('ollama::qwen3:8b');
+  autoFallbacks.push('ollama::gemma3:4b');
 
   const chain = [...chainVars, ...autoFallbacks];
 
@@ -780,7 +781,13 @@ async function callAI(messages, systemPromptOverride) {
 
       // ── Ollama (local) ────────────────────────────────────────────
       if (provider === 'ollama') {
-        const ollamaModels = [model, 'llama3.2', 'llama3.1', 'llama3', 'mistral', 'gemma2'].filter(Boolean);
+        // Query installed models first, then fall back to common names
+        let installedOllamaModels = [];
+        try {
+          const listR = await axios.get('http://localhost:11434/api/tags', { timeout: 3000 });
+          installedOllamaModels = (listR.data.models || []).map(m => m.name);
+        } catch (_) { /* Ollama not running */ }
+        const ollamaModels = [model, ...installedOllamaModels, 'llama3.2', 'llama3.1', 'llama3', 'mistral', 'gemma2'].filter((v, i, a) => v && a.indexOf(v) === i);
         for (const om of ollamaModels) {
           try {
             const r = await axios.post('http://localhost:11434/api/chat', {
