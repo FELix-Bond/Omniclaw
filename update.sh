@@ -111,8 +111,32 @@ cd "$CURRENT_DIR/dashboard" && npm install --silent
 echo ""
 echo -e "${GREEN}✅ OmniClaw updated to v$LATEST_VERSION${NC}"
 echo ""
-echo "Restart your dashboard to use the new version:"
-echo "  pkill -f 'node server.js'; node dashboard/server.js"
+
+# --- Restart services ---
+cd "$CURRENT_DIR"
+
+# Docker Compose — preferred if running
+if command -v docker-compose &>/dev/null && docker-compose ps 2>/dev/null | grep -q "omniclaw"; then
+  echo "Docker detected — restarting stack..."
+  docker-compose pull 2>/dev/null || true
+  docker-compose up -d --build
+  echo -e "${GREEN}✅ Docker stack restarted.${NC}"
+  echo "   Dashboard: http://localhost:${DASHBOARD_PORT:-3001}"
+  echo "   MetaClaw:  http://localhost:30000"
+elif command -v docker &>/dev/null && docker ps 2>/dev/null | grep -q "omniclaw"; then
+  echo "Docker detected — restarting stack..."
+  docker compose up -d --build 2>/dev/null || docker-compose up -d --build
+  echo -e "${GREEN}✅ Docker stack restarted.${NC}"
+else
+  # Plain Node fallback
+  echo "Restarting dashboard..."
+  pkill -f 'node.*server.js' 2>/dev/null || true
+  sleep 1
+  nohup node "$CURRENT_DIR/dashboard/server.js" >> "$CURRENT_DIR/logs/dashboard.log" 2>&1 &
+  echo -e "${GREEN}✅ Dashboard restarted (PID $!).${NC}"
+  echo "   Open: http://localhost:${DASHBOARD_PORT:-3001}"
+fi
+
 echo ""
 echo "Your backup is at: $BACKUP_DIR (safe to delete after confirming everything works)"
 echo ""
