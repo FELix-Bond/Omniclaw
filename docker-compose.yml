@@ -2,11 +2,53 @@ version: "3.9"
 
 # =============================================================================
 # OmniClaw Docker Compose
-# Runs the full stack: Dashboard + NemoClaw sandbox + optional Supabase
+# Runs the full stack: Dashboard + MetaClaw + NemoClaw sandbox
 # Usage: docker-compose up -d
 # =============================================================================
 
 services:
+
+  # ---------------------------------------------------------------------------
+  # MetaClaw — Agent Meta-Learning Proxy
+  # Sits between the dashboard and LLMs, injecting learned skills + evolving
+  # from failures. Runs on port 30000 (OpenAI-compatible API).
+  # Skills persist in ./memory/metaclaw/skills/
+  # ---------------------------------------------------------------------------
+  metaclaw:
+    image: python:3.11-slim
+    container_name: omniclaw-metaclaw
+    working_dir: /app
+    command: >
+      bash -c "
+        pip install --quiet metaclaw &&
+        mkdir -p /app/skills /app/memory &&
+        metaclaw start
+          --host 0.0.0.0
+          --port 30000
+          --mode skills_only
+          --skills-path /app/skills
+          --llm-provider ${METACLAW_LLM_PROVIDER:-openai}
+          --llm-model ${METACLAW_LLM_MODEL:-gpt-4o-mini}
+          --api-key ${ANTHROPIC_API_KEY:-${OPENAI_API_KEY:-}}
+      "
+    ports:
+      - "30000:30000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - METACLAW_LLM_PROVIDER=${METACLAW_LLM_PROVIDER:-openai}
+      - METACLAW_LLM_MODEL=${METACLAW_LLM_MODEL:-gpt-4o-mini}
+    volumes:
+      - ./memory/metaclaw:/app/skills
+      - metaclaw-cache:/root/.cache/pip
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s  # give pip install time to finish
 
   # ---------------------------------------------------------------------------
   # Paperclip Dashboard
@@ -16,8 +58,11 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile
     container_name: omniclaw-dashboard
+    depends_on:
+      metaclaw:
+        condition: service_healthy
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+      - "${DASHBOARD_PORT:-3001}:3000"
     environment:
       - COMPANY_NAME=${COMPANY_NAME}
       - OWNER_NAME=${OWNER_NAME}
@@ -26,16 +71,26 @@ services:
       - BUDGET_LIMIT=${BUDGET_LIMIT}
       - VAULT_PATH=/vault
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - TG_TOKEN=${TG_TOKEN}
+      - TG_CHAT_ID=${TG_CHAT_ID}
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
       - GITHUB_USER=${GITHUB_USER}
       - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - NOTION_TOKEN=${NOTION_TOKEN}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
       - DECISION_MODE=${DECISION_MODE:-full}
       - ESCALATION_THRESHOLD=${ESCALATION_THRESHOLD}
+      - METACLAW_HOST=http://metaclaw:30000
+      - METACLAW_ENABLED=${METACLAW_ENABLED:-true}
     volumes:
       - ./memory:/app/memory
       - ./agents:/app/agents
@@ -69,5 +124,6 @@ services:
       - nvidia  # Only starts with: docker-compose --profile nvidia up
 
 volumes:
+  metaclaw-cache:
   memory:
   logs:
