@@ -153,7 +153,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = process.env.DASHBOARD_PORT || 3000;
+const PORT = process.env.DASHBOARD_PORT || 3001;
 
 // =============================================================================
 // ERROR LOG — tracked in memory, exposed via /api/errors
