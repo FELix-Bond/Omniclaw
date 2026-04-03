@@ -598,24 +598,166 @@
             <div id="llmProviders" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
           </div>
 
+          <!-- METACLAW -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-weight:700">🧬 MetaClaw — Agent Meta-Learning</div>
+                <span style="font-size:0.7rem;background:rgba(91,141,238,0.15);color:var(--accent);padding:2px 7px;border-radius:10px">#1 HuggingFace</span>
+              </div>
+              <button onclick="checkMetaclaw()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;color:var(--text)">Check Status</button>
+            </div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 10px">Sits between agents and LLMs. Injects learned skills, extracts new ones from successful interactions, evolves from failures. Agents get smarter automatically. <a href="https://github.com/aiming-lab/MetaClaw" target="_blank" style="color:var(--accent)">GitHub →</a></p>
+            <div id="metaclawStatus" style="font-size:0.82rem;color:var(--muted);padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:10px">Click "Check Status" to detect MetaClaw</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px;font-weight:600">SETUP (one-time):</div>
+            <div style="font-family:monospace;font-size:0.73rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);margin-bottom:10px">
+              pip install metaclaw<br>
+              metaclaw setup  <span style="color:var(--muted)"># choose: skills_only (no GPU needed)</span><br>
+              metaclaw start  <span style="color:var(--muted)"># runs proxy at localhost:30000</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="metaclawEnabled" onchange="toggleMetaclaw(this.checked)" style="cursor:pointer">
+                Route agent calls through MetaClaw
+              </label>
+              <input type="text" id="metaclawHost" placeholder="http://localhost:30000" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:0.78rem;outline:none">
+              <button onclick="saveMetaclawHost()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.78rem">Save</button>
+            </div>
+          </div>
+
+          <!-- QUICK MODEL SWITCHER -->
+          <div style="background:var(--surface2);border:2px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;margin-bottom:4px;color:var(--accent)">⚡ Switch Model — Live</div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Change the primary AI model instantly — no restart needed.</p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="modelSwitcherSelect" style="flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:0.85rem">
+                <optgroup label="☁️ Anthropic Claude">
+                  <option value="anthropic::claude-opus-4-6">Claude Opus 4.6 (most capable)</option>
+                  <option value="anthropic::claude-sonnet-4-6">Claude Sonnet 4.6 (recommended)</option>
+                  <option value="anthropic::claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast)</option>
+                </optgroup>
+                <optgroup label="☁️ OpenAI">
+                  <option value="openai::gpt-4o">GPT-4o</option>
+                  <option value="openai::gpt-4o-mini">GPT-4o Mini (fast)</option>
+                  <option value="openai::o3">o3 (reasoning)</option>
+                  <option value="openai::o4-mini">o4-mini (reasoning, fast)</option>
+                </optgroup>
+                <optgroup label="☁️ Groq (ultra-fast)">
+                  <option value="groq::llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                  <option value="groq::llama-3.1-8b-instant">Llama 3.1 8B (fastest)</option>
+                  <option value="groq::gemma2-9b-it">Gemma 2 9B</option>
+                  <option value="groq::deepseek-r1-distill-llama-70b">DeepSeek R1 Distill</option>
+                </optgroup>
+                <optgroup label="☁️ Google Gemini">
+                  <option value="gemini::gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gemini::gemini-2.5-flash">Gemini 2.5 Flash (fast)</option>
+                  <option value="gemini::gemini-2.0-flash">Gemini 2.0 Flash</option>
+                </optgroup>
+                <optgroup label="☁️ OpenRouter (free models)">
+                  <option value="openrouter::google/gemma-3-12b-it:free">Gemma 3 12B (free)</option>
+                  <option value="openrouter::meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B (free)</option>
+                  <option value="openrouter::microsoft/phi-4:free">Phi-4 (free)</option>
+                  <option value="openrouter::deepseek/deepseek-r1:free">DeepSeek R1 (free)</option>
+                </optgroup>
+                <optgroup label="🖥️ Ollama (local)">
+                  <option value="ollama::gemma4">Gemma 4 (local)</option>
+                  <option value="ollama::gemma4:2b">Gemma 4 2B (local, fast)</option>
+                  <option value="ollama::gemma3:9b">Gemma 3 9B (local)</option>
+                  <option value="ollama::gemma3:27b">Gemma 3 27B (local)</option>
+                  <option value="ollama::llama3.3:70b">Llama 3.3 70B (local)</option>
+                  <option value="ollama::llama3.2">Llama 3.2 (local)</option>
+                  <option value="ollama::llama3.1:8b">Llama 3.1 8B (local)</option>
+                  <option value="ollama::mistral">Mistral (local)</option>
+                  <option value="ollama::phi4">Phi-4 (local)</option>
+                  <option value="ollama::phi4-mini">Phi-4 Mini (local)</option>
+                  <option value="ollama::qwen2.5:7b">Qwen 2.5 7B (local)</option>
+                  <option value="ollama::qwen2.5:72b">Qwen 2.5 72B (local)</option>
+                  <option value="ollama::deepseek-r1:7b">DeepSeek R1 7B (local)</option>
+                  <option value="ollama::deepseek-r1:14b">DeepSeek R1 14B (local)</option>
+                  <option value="ollama::codellama">Code Llama (local)</option>
+                </optgroup>
+                <optgroup label="🔩 BitNet (ultra-fast local)">
+                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-2B-4T-gguf">BitNet 2B-4T (2B, fastest)</option>
+                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-3B-gguf">BitNet 3B (3B)</option>
+                  <option value="ollama::hf.co/microsoft/bitnet-b1.58-large-gguf">BitNet Large (0.7B)</option>
+                  <option value="ollama::hf.co/microsoft/Llama3-8B-1.58-100B-tokens-gguf">BitNet Llama3 8B</option>
+                </optgroup>
+              </select>
+              <button onclick="switchModelNow()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:0.85rem;font-weight:600">⚡ Switch</button>
+              <button onclick="pullSelectedModel()" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;font-size:0.82rem">⬇ Pull if needed</button>
+            </div>
+            <div id="modelSwitchStatus" style="font-size:0.78rem;color:var(--muted);margin-top:8px"></div>
+          </div>
+
           <!-- OLLAMA LOCAL -->
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
               <div style="font-weight:700">🖥️ Ollama — Local Models</div>
               <button onclick="loadOllamaModels()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem;color:var(--text)">Refresh</button>
             </div>
-            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Run AI models 100% locally, for free. <a href="https://ollama.com" target="_blank" style="color:var(--accent)">Download Ollama →</a> then pull a model: <code style="font-size:0.76rem">ollama pull llama3.2</code></p>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Run AI locally, for free. <a href="https://ollama.com" target="_blank" style="color:var(--accent)">Download Ollama →</a></p>
             <div id="ollamaStatus" style="font-size:0.82rem;color:var(--muted);margin-bottom:8px">Checking...</div>
-            <div id="ollamaModelList" style="display:grid;grid-template-columns:1fr 1fr;gap:6px"></div>
+            <div id="ollamaModelList" style="display:grid;grid-template-columns:1fr;gap:6px"></div>
             <div style="margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
-              <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:6px">PULL A NEW MODEL</div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${['llama3.2','llama3.1:8b','mistral','gemma2:9b','phi3','codellama','deepseek-r1','qwen2.5'].map(m =>
-                  `<button onclick="ollamaPull('${m}')" style="font-size:0.73rem;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer">${m}</button>`
-                ).join('')}
+              <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:8px">PULL A MODEL</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px">
+                ${[
+                  {n:'gemma4',l:'Gemma 4'},
+                  {n:'gemma4:2b',l:'Gemma 4 2B'},
+                  {n:'gemma3:9b',l:'Gemma 3 9B'},
+                  {n:'gemma3:27b',l:'Gemma 3 27B'},
+                  {n:'llama3.3:70b',l:'Llama 3.3 70B'},
+                  {n:'llama3.2',l:'Llama 3.2'},
+                  {n:'llama3.1:8b',l:'Llama 3.1 8B'},
+                  {n:'mistral',l:'Mistral'},
+                  {n:'phi4',l:'Phi-4'},
+                  {n:'phi4-mini',l:'Phi-4 Mini'},
+                  {n:'qwen2.5:7b',l:'Qwen 2.5 7B'},
+                  {n:'qwen2.5:72b',l:'Qwen 2.5 72B'},
+                  {n:'qwen2.5-coder',l:'Qwen Coder'},
+                  {n:'deepseek-r1:7b',l:'DeepSeek R1 7B'},
+                  {n:'deepseek-r1:14b',l:'DeepSeek R1 14B'},
+                  {n:'codellama',l:'Code Llama'},
+                  {n:'nomic-embed-text',l:'Nomic Embed'},
+                  {n:'command-r',l:'Command-R'},
+                ].map(m => `<button onclick="ollamaPull('${m.n}')" title="Pull ${m.n}" style="font-size:0.73rem;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;text-align:left">⬇ ${m.l}</button>`).join('')}
               </div>
-              <div id="ollamaPullStatus" style="font-size:0.78rem;color:var(--muted);margin-top:6px"></div>
+              <div id="ollamaPullStatus" style="font-size:0.78rem;color:var(--muted);margin-top:8px"></div>
             </div>
+          </div>
+
+          <!-- BITNET -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <div style="font-weight:700">🔩 BitNet — Ultra-Fast Local</div>
+              <span style="font-size:0.7rem;background:rgba(91,141,238,0.15);color:var(--accent);padding:2px 7px;border-radius:10px">1-bit quantised</span>
+            </div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 10px">Microsoft's 1-bit models run at full CPU speed with minimal RAM. <a href="https://github.com/microsoft/BitNet" target="_blank" style="color:var(--accent)">BitNet GitHub →</a></p>
+            <div style="display:grid;gap:8px">
+              ${[
+                {id:'hf.co/microsoft/bitnet-b1.58-2B-4T-gguf', name:'BitNet 2B-4T', desc:'2B params, 4T training tokens — best quality/speed', key:'BITNET_2B'},
+                {id:'hf.co/microsoft/bitnet-b1.58-3B-gguf', name:'BitNet 3B', desc:'3B params — good balance', key:'BITNET_3B'},
+                {id:'hf.co/microsoft/bitnet-b1.58-large-gguf', name:'BitNet Large', desc:'0.7B — fastest, lowest RAM', key:'BITNET_LARGE'},
+                {id:'hf.co/microsoft/Llama3-8B-1.58-100B-tokens-gguf', name:'BitNet Llama3 8B', desc:'Llama 3 architecture, 100B training tokens', key:'BITNET_LLAMA3'},
+              ].map(m => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+                  <div>
+                    <div style="font-size:0.85rem;font-weight:600">${m.name}</div>
+                    <div style="font-size:0.72rem;color:var(--muted)">${m.desc}</div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    <button onclick="ollamaPull('${m.id}')" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer">⬇ Pull via Ollama</button>
+                    <button onclick="switchToModel('ollama::${m.id}')" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer">⚡ Use</button>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </div>
+
+          <!-- CLOUD MODELS WITH API KEYS -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;margin-bottom:4px">☁️ Cloud Models — API Keys</div>
+            <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">Click a provider to expand, enter your key, and enable it in your model chain.</p>
+            <div id="cloudProviderList" style="display:grid;gap:8px"></div>
           </div>
 
           <!-- VOICE CONFIG -->
@@ -1669,6 +1811,11 @@ function toggleMic(btn, targetInputId) {
 
 async function recordAndTranscribe(btn, input) {
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      micSetActive(btn, false);
+      alert('Microphone requires a secure connection. Please access the dashboard via http://localhost:' + location.port + ' instead of using the IP address.');
+      return;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
     // AudioContext for silence detection — MUST call resume() or it stays suspended
@@ -2260,7 +2407,7 @@ function switchSettingsTab(tab, el) {
   if (tab === 'integrations') loadIntegrations();
   if (tab === 'memory') loadMemory();
   if (tab === 'errors') loadErrorLog();
-  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); }
+  if (tab === 'aimodels') { loadVoiceConfig(); loadOllamaModels(); loadCloudProviders(); }
 }
 
 async function loadVoiceConfig() {
@@ -2382,17 +2529,18 @@ async function loadOllamaModels() {
       listEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:span 2">No models pulled yet. Use the buttons below to download one.</div>';
       return;
     }
-    const currentPrimary = ''; // Could fetch from settings
+    let currentPrimary = '';
+    try { const sr = await fetch('/api/settings'); const sd = await sr.json(); currentPrimary = (sd.settings?.find(s => s.key === 'MODEL_CHAIN_1')?.value || '').replace('ollama::',''); } catch(_) {}
     listEl.style.gridTemplateColumns = '1fr';
     listEl.innerHTML = d.models.map(m => `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);border:1px solid ${m.name === currentPrimary || m.name.split(':')[0] === currentPrimary ? 'var(--accent)' : 'var(--border)'};border-radius:6px">
         <div>
-          <div style="font-size:0.85rem;font-weight:600">${m.name}</div>
+          <div style="font-size:0.85rem;font-weight:600">${m.name}${m.name === currentPrimary || m.name.split(':')[0] === currentPrimary ? ' <span style="color:var(--accent);font-size:0.7rem">● ACTIVE</span>' : ''}</div>
           <div style="font-size:0.72rem;color:var(--muted)">${[m.params, m.family, m.size ? (m.size/1e9).toFixed(1)+'GB' : ''].filter(Boolean).join(' · ')}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button onclick="ollamaSetDefault('${m.name}','primary',this)" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--accent);color:#fff;cursor:pointer" title="Set as primary AI model">⭐ Primary</button>
-          <button onclick="ollamaSetDefault('${m.name}','backup',this)" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer" title="Set as backup AI model">↩ Backup</button>
+          <button onclick="switchToModel('ollama::${m.name}')" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer">⚡ Use</button>
+          <button onclick="ollamaSetDefault('${m.name}','backup',this)" style="font-size:0.72rem;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer">↩ Backup</button>
         </div>
       </div>`).join('');
   } catch(e) { if (statusEl) statusEl.textContent = 'Error: ' + e.message; }
@@ -2429,6 +2577,160 @@ async function ollamaPull(model) {
     if (status) status.textContent = `✓ ${model} pulled successfully!`;
     setTimeout(loadOllamaModels, 1000);
   } catch(e) { if (status) status.textContent = '✗ ' + e.message; }
+}
+
+async function switchModelNow() {
+  const sel = document.getElementById('modelSwitcherSelect');
+  const status = document.getElementById('modelSwitchStatus');
+  const value = sel?.value;
+  if (!value) return;
+  status.textContent = '⏳ Switching...';
+  try {
+    const r = await fetch('/api/model/switch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ value }) });
+    const d = await r.json();
+    if (d.ok) {
+      status.textContent = `✓ Now using: ${value}`;
+      status.style.color = 'var(--green)';
+      setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 3000);
+    } else {
+      status.textContent = '✗ Failed: ' + (d.error || 'unknown');
+      status.style.color = 'var(--red)';
+    }
+  } catch(e) { status.textContent = '✗ ' + e.message; status.style.color = 'var(--red)'; }
+}
+
+async function switchToModel(value) {
+  const status = document.getElementById('modelSwitchStatus');
+  if (status) { status.textContent = '⏳ Switching...'; status.style.color = ''; }
+  try {
+    const r = await fetch('/api/model/switch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ value }) });
+    const d = await r.json();
+    if (d.ok && status) { status.textContent = `✓ Switched to: ${value}`; status.style.color = 'var(--green)'; setTimeout(() => { status.textContent = ''; }, 3000); }
+  } catch(e) {}
+}
+
+async function pullSelectedModel() {
+  const sel = document.getElementById('modelSwitcherSelect');
+  const status = document.getElementById('modelSwitchStatus');
+  const value = sel?.value;
+  if (!value || !value.startsWith('ollama::')) {
+    if (status) { status.textContent = 'Pull only works for Ollama models. Cloud models just need an API key.'; status.style.color = 'var(--muted)'; }
+    return;
+  }
+  const model = value.replace('ollama::', '');
+  if (status) { status.textContent = `⏳ Pulling ${model}...`; status.style.color = ''; }
+  await ollamaPull(model);
+  document.getElementById('ollamaPullStatus');
+}
+
+function loadCloudProviders() {
+  const el = document.getElementById('cloudProviderList');
+  if (!el) return;
+  const providers = [
+    { id:'ANTHROPIC_API_KEY', name:'Anthropic Claude', url:'https://console.anthropic.com/settings/keys', models:'claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5', color:'#d4a76a' },
+    { id:'OPENAI_API_KEY', name:'OpenAI', url:'https://platform.openai.com/api-keys', models:'gpt-4o, o3, o4-mini, whisper (STT), TTS', color:'#10a37f' },
+    { id:'GROQ_API_KEY', name:'Groq', url:'https://console.groq.com/keys', models:'Llama 3.3 70B, DeepSeek R1, Whisper STT, TTS (free!)', color:'#f97316' },
+    { id:'GOOGLE_AI_API_KEY', name:'Google Gemini', url:'https://aistudio.google.com/app/apikey', models:'gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash', color:'#4285f4' },
+    { id:'OPENROUTER_API_KEY', name:'OpenRouter', url:'https://openrouter.ai/keys', models:'100+ models incl. free tiers', color:'#8b5cf6' },
+  ];
+  el.innerHTML = providers.map(p => `
+    <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">
+      <div onclick="toggleCloudProvider('cp-${p.id}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface);cursor:pointer">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${p.color}"></div>
+          <div style="font-size:0.85rem;font-weight:600">${p.name}</div>
+          <div style="font-size:0.72rem;color:var(--muted)">${p.models}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="cp-status-${p.id}" style="font-size:0.72rem;color:var(--muted)">checking...</span>
+          <span style="color:var(--muted);font-size:0.8rem">▼</span>
+        </div>
+      </div>
+      <div id="cp-${p.id}" style="display:none;padding:12px;background:var(--surface2);border-top:1px solid var(--border)">
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px">API Key: <a href="${p.url}" target="_blank" style="color:var(--accent)">Get key →</a></div>
+        <div style="display:flex;gap:6px">
+          <input type="password" id="cp-input-${p.id}" placeholder="sk-..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:0.82rem;font-family:monospace;outline:none">
+          <button onclick="toggleCpVisibility('cp-input-${p.id}',this)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem;color:var(--muted)">👁</button>
+          <button onclick="saveCloudKey('${p.id}', 'cp-input-${p.id}', 'cp-status-${p.id}')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.82rem">Save</button>
+        </div>
+      </div>
+    </div>`).join('');
+
+  // Check status for each
+  providers.forEach(p => checkProviderKey(p.id));
+}
+
+async function checkProviderKey(keyName) {
+  const statusEl = document.getElementById(`cp-status-${keyName}`);
+  if (!statusEl) return;
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json();
+    const s = d.settings?.find(s => s.key === keyName);
+    if (s?.value && s.value.length > 8) {
+      statusEl.textContent = '✓ Configured';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = '⚠ Not set';
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch(_) { statusEl.textContent = '?'; }
+}
+
+function toggleCloudProvider(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleCpVisibility(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+
+async function saveCloudKey(keyName, inputId, statusId) {
+  const inp = document.getElementById(inputId);
+  const statusEl = document.getElementById(statusId);
+  const value = inp?.value?.trim();
+  if (!value) return;
+  try {
+    const r = await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: keyName, value }) });
+    const d = await r.json();
+    if (d.success || d.ok) {
+      if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.style.color = 'var(--green)'; }
+      inp.value = '';
+    }
+  } catch(e) {}
+}
+
+async function checkMetaclaw() {
+  const statusEl = document.getElementById('metaclawStatus');
+  if (!statusEl) return;
+  statusEl.textContent = '⏳ Checking MetaClaw...';
+  try {
+    const r = await fetch('/api/metaclaw/status');
+    const d = await r.json();
+    if (d.running) {
+      statusEl.innerHTML = `<span style="color:var(--green)">✓ MetaClaw running</span> at ${d.host} — ${d.enabled ? 'routing ENABLED' : 'routing DISABLED (tick checkbox below to enable)'}`;
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--red)">⚠ MetaClaw not detected</span> at ${d.host}. Run <code>metaclaw start</code> to activate.`;
+    }
+    const cb = document.getElementById('metaclawEnabled');
+    if (cb) cb.checked = !!d.enabled;
+    const hf = document.getElementById('metaclawHost');
+    if (hf) hf.placeholder = d.host;
+  } catch(e) { statusEl.textContent = 'Error checking status: ' + e.message; }
+}
+
+async function toggleMetaclaw(enabled) {
+  await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:'METACLAW_ENABLED', value: enabled ? 'true' : 'false' }) });
+}
+
+async function saveMetaclawHost() {
+  const val = document.getElementById('metaclawHost')?.value?.trim();
+  if (!val) return;
+  await fetch('/api/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:'METACLAW_HOST', value: val }) });
 }
 
 // =============================================================================

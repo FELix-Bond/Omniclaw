@@ -618,6 +618,25 @@ function setCooldown(provider, ms = 90000) {
 async function callAI(messages, systemPromptOverride) {
   const sysPrompt = systemPromptOverride || getSystemPrompt();
 
+  // ── MetaClaw routing (if enabled) ────────────────────────────────────────
+  if (resolveConfig('METACLAW_ENABLED') === 'true') {
+    const metaHost = resolveConfig('METACLAW_HOST') || 'http://localhost:30000';
+    try {
+      const sessionId = `omniclaw-${Date.now()}`;
+      const r = await axios.post(`${metaHost}/v1/chat/completions`, {
+        model: resolveConfig('MODEL_CHAIN_1') || 'auto',
+        messages: [{ role: 'system', content: sysPrompt }, ...messages],
+        max_tokens: 2048,
+      }, {
+        headers: { 'X-Session-Id': sessionId, 'X-Turn-Type': 'standard', 'Content-Type': 'application/json' },
+        timeout: 45000,
+      });
+      return r.data.choices[0].message.content;
+    } catch (me) {
+      console.log(`[MetaClaw] Routing failed (${me.code || me.response?.status || me.message}) — falling through to normal chain`);
+    }
+  }
+
   // Build primary chain from MODEL_CHAIN vars
   const chainVars = [process.env.MODEL_CHAIN_1, process.env.MODEL_CHAIN_2, process.env.MODEL_CHAIN_3].filter(Boolean);
 
@@ -773,7 +792,7 @@ async function callAI(messages, systemPromptOverride) {
 // Data-returning actions trigger a synthesis pass so the agent sees results.
 //
 // FULL ACTION REFERENCE:
-// FILES:    obsidian_write|Title|Content  obsidian_append|Title|Content
+// FILES:    obsidian_write|Title|Content  obsidian_append|Title|Content  obsidian_search|#hashtag or keyword
 //           memory_write|file.md|Content  memory_read|file.md
 //           file_write|path|Content       file_read|path
 // WEB:      web_search|query              web_fetch|https://url
@@ -958,7 +977,7 @@ ORCHESTRATION: Delegate to C-Suite for strategic execution. Use pool agents for 
 const AGENT_ACTION_REFERENCE = `
 ACTIONS — you have real execution capabilities. Embed these inline in your reply and the server runs them immediately. Use them proactively — don't describe what you'd do, just DO IT.
 
-FILES:    [[ACTION:obsidian_write|Title|Content]] [[ACTION:obsidian_append|Title|More]] [[ACTION:memory_write|file.md|Content]] [[ACTION:memory_read|file.md]] [[ACTION:file_write|path|Content]] [[ACTION:file_read|path]]
+FILES:    [[ACTION:obsidian_write|Title|Content]] [[ACTION:obsidian_append|Title|More]] [[ACTION:obsidian_search|#hashtag or keyword]] [[ACTION:memory_write|file.md|Content]] [[ACTION:memory_read|file.md]] [[ACTION:file_write|path|Content]] [[ACTION:file_read|path]]
 WEB:      [[ACTION:web_search|your query here]] [[ACTION:web_fetch|https://url.com]]
 COMMS:    [[ACTION:send_email|to@email.com|Subject|Body]] [[ACTION:slack_send|#channel|Message]] [[ACTION:telegram_send|Message]]
 GOOGLE:   [[ACTION:google_doc|Title|Content]] [[ACTION:calendar_event|Title|2024-01-01T10:00:00|2024-01-01T11:00:00|Description]] [[ACTION:sheets_append|val1,val2,val3]]
@@ -1302,6 +1321,52 @@ async function executeActions(reply, systemPromptForSynthesis) {
           }
           data = responses.join('\n\n');
           label = `📢 Broadcast to ${responses.length} agents`;
+          isData = true;
+          break;
+        }
+
+        case 'obsidian_search': {
+          const vaultPath = resolveConfig('OBSIDIAN_VAULT_PATH', 'VAULT_PATH');
+          if (!vaultPath) { label = '⚠️ Obsidian vault not configured — add VAULT_PATH to Settings'; break; }
+          const query = parts.slice(1).join('|').trim().toLowerCase();
+          if (!query) { label = '⚠️ obsidian_search requires a query: [[ACTION:obsidian_search|#marketing]] or [[ACTION:obsidian_search|project name]]'; break; }
+          function walkVault(dir, found = []) {
+            if (!fs.existsSync(dir)) return found;
+            try {
+              for (const f of fs.readdirSync(dir)) {
+                if (f.startsWith('.')) continue;
+                const fp = path.join(dir, f);
+                try {
+                  if (fs.statSync(fp).isDirectory()) walkVault(fp, found);
+                  else if (f.endsWith('.md')) found.push(fp);
+                } catch(_) {}
+              }
+            } catch(_) {}
+            return found;
+          }
+          const allFiles = walkVault(vaultPath);
+          const matches = [];
+          for (const fp of allFiles) {
+            try {
+              const content = fs.readFileSync(fp, 'utf8');
+              const title = path.basename(fp, '.md');
+              const lc = content.toLowerCase();
+              if (lc.includes(query) || title.toLowerCase().includes(query)) {
+                const idx = lc.indexOf(query);
+                const snippet = content.slice(Math.max(0, idx - 60), idx + 120).replace(/\n+/g, ' ').trim();
+                const lines = content.split('\n').filter(l => l.toLowerCase().includes(query)).slice(0, 3);
+                matches.push({ title, rel: fp.replace(vaultPath, ''), snippet: lines.join(' | ') || snippet });
+              }
+            } catch(_) {}
+            if (matches.length >= 30) break; // cap at 30 results
+          }
+          if (!matches.length) {
+            data = `No notes found matching "${query}" in ${allFiles.length} vault files.`;
+          } else {
+            data = `Found ${matches.length} note${matches.length !== 1 ? 's' : ''} matching "${query}":\n\n` +
+              matches.map(m => `📄 **${m.title}** (${m.rel})\n   ${m.snippet}`).join('\n\n');
+          }
+          label = `🔍 Obsidian: "${query}" — ${matches.length} result${matches.length !== 1 ? 's' : ''} in ${allFiles.length} files`;
           isData = true;
           break;
         }
@@ -1745,7 +1810,7 @@ function stripForSpeech(text) {
 
 // Send a voice message back to Telegram using Groq TTS
 // Generate TTS audio buffer using best available provider
-async function generateTTSBuffer(text) {
+async function generateTTSBuffer(text, voiceOverride = null) {
   const clean = stripForSpeech(text);
 
   // 1. Try OpenAI TTS (most reliable, onyx = male)
@@ -1767,7 +1832,7 @@ async function generateTTSBuffer(text) {
   if (groqKey) {
     for (const fmt of ['wav', 'mp3']) {
       try {
-        const voice = resolveConfig('VOICE_GROQ_VOICE') || 'Fritz-PlayAI';
+        const voice = voiceOverride || resolveConfig('VOICE_GROQ_VOICE') || 'Fritz-PlayAI';
         const r = await axios.post(
           'https://api.groq.com/openai/v1/audio/speech',
           { model: 'playai-tts', voice, input: clean.slice(0, 2000), response_format: fmt },
@@ -2616,7 +2681,7 @@ app.get('/api/voice/provider', (req, res) => {
 });
 
 app.post('/api/voice/speak', async (req, res) => {
-  const { text, provider: reqProvider } = req.body;
+  const { text, provider: reqProvider, voice: reqVoice } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
 
   const provider = reqProvider || getTTSProvider();
@@ -2640,7 +2705,7 @@ app.post('/api/voice/speak', async (req, res) => {
   }
 
   // Auto / Groq / OpenAI — use shared generateTTSBuffer() which tries both
-  const audio = await generateTTSBuffer(text);
+  const audio = await generateTTSBuffer(text, reqVoice);
   if (audio) {
     res.set('Content-Type', audio.mime);
     return res.send(audio.buffer);
@@ -2712,6 +2777,34 @@ app.post('/api/ollama/set-default', (req, res) => {
   fs.writeFileSync(envPath, lines.join('\n'), 'utf8');
   process.env[key] = value;
   res.json({ ok: true, key, value });
+});
+
+// Quick model switch — update MODEL_CHAIN_1 immediately without restart
+app.post('/api/model/switch', (req, res) => {
+  const { value } = req.body; // e.g. 'anthropic::claude-sonnet-4-6' or 'ollama::gemma3:9b'
+  if (!value) return res.status(400).json({ error: 'value required' });
+  const key = 'MODEL_CHAIN_1';
+  let content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
+  const lines = content.split('\n');
+  const idx = lines.findIndex(l => { const e = l.indexOf('='); return e > 0 && l.slice(0, e).trim() === key; });
+  const newLine = `${key}="${value}"`;
+  if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
+  fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf8');
+  process.env[key] = value;
+  console.log(`[MODEL] Switched primary model to: ${value}`);
+  io.emit('model:switched', { model: value });
+  res.json({ ok: true, model: value });
+});
+
+app.get('/api/metaclaw/status', async (req, res) => {
+  const metaHost = resolveConfig('METACLAW_HOST') || 'http://localhost:30000';
+  const enabled = resolveConfig('METACLAW_ENABLED') === 'true';
+  try {
+    await axios.get(`${metaHost}/v1/models`, { timeout: 2000 });
+    res.json({ running: true, host: metaHost, enabled });
+  } catch(e) {
+    res.json({ running: false, host: metaHost, enabled, error: e.code || e.message });
+  }
 });
 
 app.get('/api/ollama/models', async (req, res) => {
@@ -3016,10 +3109,15 @@ async function selfHeal() {
 loadOrgChart();
 loadDecisions();
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🦾 OmniClaw Dashboard`);
   console.log(`   Company:   ${state.company}`);
   console.log(`   Port:      http://localhost:${PORT}`);
+  console.log(`   Open:      http://localhost:${PORT}`);
+  if (process.env.AUTO_OPEN_DASHBOARD !== 'false') {
+    const { exec } = require('child_process');
+    setTimeout(() => exec(`open http://localhost:${PORT}`, () => {}), 800);
+  }
   console.log(`   Agents:    ${Object.keys(state.agents).length} active`);
   console.log(`   Heartbeat: ${state.heartbeat}`);
 
