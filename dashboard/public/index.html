@@ -2426,6 +2426,21 @@ socket.on('briefing:sent', (data) => {
   if (el) el.textContent = `Last briefing sent: ${new Date(data.timestamp).toLocaleTimeString()}`;
 });
 
+socket.on('model:switched', (data) => {
+  // Refresh chain slots if settings panel is open
+  if (document.getElementById('panel-settings') && document.getElementById('panel-settings').classList.contains('active')) {
+    loadSettings();
+  }
+  // Show a banner if this was an automatic promotion
+  if (data.auto) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1a2a1a;border:1px solid #4caf50;color:#b8f5b8;padding:14px 18px;border-radius:10px;font-size:13px;z-index:9999;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+    banner.innerHTML = '<strong>🦾 Model upgraded</strong><br>' + (data.reason || ('Active model: ' + data.model));
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 7000);
+  }
+});
+
 // =============================================================================
 // SETTINGS TABS
 // =============================================================================

@@ -3240,6 +3240,57 @@ startOnAvailablePort(PORT).then(boundPort => {
   // Self-healing: runs every 5 minutes
   setInterval(selfHeal, 5 * 60 * 1000);
 
+  // ── Ollama model watcher ─────────────────────────────────────────────────
+  // Ranked preference list — highest first. When a model becomes available
+  // and it ranks higher than the current MODEL_CHAIN_1, auto-promote it.
+  const OLLAMA_PREFERRED = [
+    'qwen3:32b', 'qwen3:30b-a3b', 'deepseek-r1:32b',
+    'qwen3:14b',  'deepseek-r1:14b', 'phi4:14b',
+    'qwen3:8b',   'deepseek-r1:8b',  'llama3.3:8b',
+    'gemma3:12b', 'gemma3:9b',
+    'mistral',    'gemma3:4b',       'qwen3:4b',
+  ];
+  let _knownOllamaModels = new Set();
+
+  async function watchOllamaModels() {
+    try {
+      const r = await axios.get('http://localhost:11434/api/tags', { timeout: 4000 });
+      const installed = (r.data.models || []).map(m => m.name);
+      const newModels = installed.filter(m => !_knownOllamaModels.has(m));
+      if (newModels.length) {
+        newModels.forEach(m => _knownOllamaModels.add(m));
+        // Find the best available model from preference list
+        const bestAvailable = OLLAMA_PREFERRED.find(p => installed.some(i => i === p || i.startsWith(p + ':')));
+        if (bestAvailable) {
+          const current = process.env.MODEL_CHAIN_1 || '';
+          const currentIsOllama = current.startsWith('ollama::');
+          const currentModel = currentIsOllama ? current.slice(8) : null;
+          const currentRank = currentModel ? OLLAMA_PREFERRED.indexOf(OLLAMA_PREFERRED.find(p => currentModel === p || currentModel.startsWith(p + ':'))) : 999;
+          const bestRank = OLLAMA_PREFERRED.indexOf(bestAvailable);
+          if (!currentIsOllama || bestRank < currentRank) {
+            // Auto-promote
+            const fullModel = installed.find(i => i === bestAvailable || i.startsWith(bestAvailable + ':'));
+            const newValue = `ollama::${fullModel}`;
+            let content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
+            const lines = content.split('\n');
+            const idx = lines.findIndex(l => { const e = l.indexOf('='); return e > 0 && l.slice(0, e).trim() === 'MODEL_CHAIN_1'; });
+            const newLine = `MODEL_CHAIN_1="${newValue}"`;
+            if (idx >= 0) lines[idx] = newLine; else lines.push(newLine);
+            fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf8');
+            process.env.MODEL_CHAIN_1 = newValue;
+            console.log(`[OLLAMA] New model detected: ${fullModel} — promoted to MODEL_CHAIN_1`);
+            io.emit('model:switched', { model: newValue, auto: true, reason: `New Ollama model available: ${fullModel}` });
+          }
+        }
+      }
+      installed.forEach(m => _knownOllamaModels.add(m));
+    } catch (_) { /* Ollama not running — ignore */ }
+  }
+
+  // Seed known models immediately, then poll every 90 seconds
+  watchOllamaModels();
+  setInterval(watchOllamaModels, 90 * 1000);
+
   // Proactive CEO: run once on startup (60s delay to let everything settle)
   // then daily at 06:00
   setTimeout(runProactiveCEO, 60000);
