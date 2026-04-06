@@ -3331,6 +3331,44 @@ async function selfHeal() {
 })();
 
 // =============================================================================
+// PAPERCLIP AGENT SELF-HEALER
+// Finds openclaw_gateway agents missing the gateway URL and patches them.
+// Runs at startup and every 5 minutes.
+// =============================================================================
+async function healPaperclipAgents() {
+  const PAPERCLIP_API = 'http://127.0.0.1:3100';
+  const COMPANY_ID = process.env.PAPERCLIP_COMPANY_ID || 'bb7a6f5b-7333-4916-89e9-c9394b5aa421';
+  const GATEWAY_URL = `ws://127.0.0.1:${process.env.DASHBOARD_PORT || 3001}/openclaw-gateway`;
+
+  try {
+    const r = await axios.get(`${PAPERCLIP_API}/api/companies/${COMPANY_ID}/agents`, { timeout: 5000 });
+    const agents = r.data || [];
+    for (const agent of agents) {
+      if (agent.adapterType !== 'openclaw_gateway') continue;
+      const cfg = agent.adapterConfig || {};
+      if (cfg.url && cfg.disableDeviceAuth) continue; // already healthy
+
+      const agentId = (agent.name || agent.id).toUpperCase().replace(/\s+/g, '_');
+      await axios.patch(`${PAPERCLIP_API}/api/agents/${agent.id}`, {
+        adapterConfig: {
+          url: GATEWAY_URL,
+          agentId,
+          disableDeviceAuth: true,
+          timeoutSec: 300,
+          waitTimeoutMs: 270000,
+        },
+        ...(agent.status === 'error' ? { status: 'idle' } : {}),
+      }, { timeout: 5000 });
+      console.log(`[HEAL] Patched agent ${agent.name} (${agent.id}) — added gateway URL`);
+    }
+  } catch (e) {
+    if (e.code !== 'ECONNREFUSED') {
+      console.log('[HEAL] Paperclip agent heal failed:', e.message);
+    }
+  }
+}
+
+// =============================================================================
 // INIT & START
 // =============================================================================
 loadOrgChart();
@@ -3456,6 +3494,10 @@ startOnAvailablePort(PORT).then(boundPort => {
   // Seed known models immediately, then poll every 90 seconds
   watchOllamaModels();
   setInterval(watchOllamaModels, 90 * 1000);
+
+  // Paperclip agent self-healer: fix misconfigured agents on startup + every 5 min
+  setTimeout(healPaperclipAgents, 10000);
+  setInterval(healPaperclipAgents, 5 * 60 * 1000);
 
   // Proactive CEO: run once on startup (60s delay to let everything settle)
   // then daily at 06:00
