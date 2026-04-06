@@ -3289,7 +3289,7 @@ async function selfHeal() {
           connectionRunPromise = null;
           console.log(`[GATEWAY] ${connectionRunId} completed — sending result`);
           send({ type: 'res', id: msg.id, ok: true,
-            payload: { status: 'completed', runId: connectionRunId, text, exitCode: 0 } });
+            payload: { status: 'ok', runId: connectionRunId, text, exitCode: 0 } });
         } catch (e) {
           connectionRunPromise = null;
           send({ type: 'res', id: msg.id, ok: false,
