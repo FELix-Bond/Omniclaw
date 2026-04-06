@@ -3200,7 +3200,10 @@ async function selfHeal() {
     let connectionRunId = null;
 
     const send = (obj) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const label = obj.type === 'event' ? `event:${obj.event}` : `${obj.type} ${obj.payload?.type || obj.payload?.status || obj.error?.code || ''}`;
+      console.log(`[GATEWAY] → ${label}`);
+      ws.send(JSON.stringify(obj));
     };
 
     // ── Step 1: challenge ────────────────────────────────────────────────────
@@ -3210,6 +3213,7 @@ async function selfHeal() {
     ws.on('message', async (raw) => {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch (_) { return; }
+      console.log(`[GATEWAY] ← ${msg.type} ${msg.method || msg.event || ''} id=${msg.id || '-'}`);
 
       // ── Step 2: connect ───────────────────────────────────────────────────
       if (msg.type === 'req' && msg.method === 'connect') {
@@ -3246,6 +3250,7 @@ async function selfHeal() {
         console.log(`[GATEWAY] Running ${personaId} — runId=${idempotencyKey}`);
         const sysPrompt = getAgentSystemPrompt(personaId);
 
+        // Store promise — no streaming events; deliver everything in agent.wait response
         connectionRunPromise = callAI([{ role: 'user', content: message }], sysPrompt)
           .then(async (text) => {
             // ── Intercept CREATE_AGENT commands ──────────────────────────
@@ -3266,35 +3271,14 @@ async function selfHeal() {
                 text += `\n\n⚠️ Agent creation failed: ${ce.message}`;
               }
             }
-
-            // Stream response as stdout events
-            const lines = text.split('\n');
-            for (const line of lines) {
-              send({ type: 'event', event: 'agent',
-                payload: { stream: 'stdout', data: line + '\n' },
-                seq: nextSeq(), stateVersion: idempotencyKey });
-            }
-            send({ type: 'event', event: 'agent',
-              payload: { stream: 'exit', exitCode: 0 },
-              seq: nextSeq(), stateVersion: idempotencyKey });
-            console.log(`[GATEWAY] ${personaId} completed — runId=${idempotencyKey}`);
+            console.log(`[GATEWAY] ${personaId} ready — runId=${idempotencyKey}`);
             return text;
-          })
-          .catch((err) => {
-            console.log(`[GATEWAY] ${personaId} error: ${err.message}`);
-            send({ type: 'event', event: 'agent',
-              payload: { stream: 'stderr', data: `Error: ${err.message}\n` },
-              seq: nextSeq(), stateVersion: idempotencyKey });
-            send({ type: 'event', event: 'agent',
-              payload: { stream: 'exit', exitCode: 1 },
-              seq: nextSeq(), stateVersion: idempotencyKey });
-            throw err;
           });
 
         return;
       }
 
-      // ── Step 4: agent.wait — keyed by connection, not by idempotencyKey ───
+      // ── Step 4: agent.wait — await the promise, return full result ────────
       if (msg.type === 'req' && msg.method === 'agent.wait') {
         if (!connectionRunPromise) {
           send({ type: 'res', id: msg.id, ok: false, error: { code: 'run_not_found' } });
@@ -3302,14 +3286,15 @@ async function selfHeal() {
         }
         try {
           const text = await connectionRunPromise;
+          connectionRunPromise = null;
+          console.log(`[GATEWAY] ${connectionRunId} completed — sending result`);
           send({ type: 'res', id: msg.id, ok: true,
-            payload: { status: 'completed', runId: connectionRunId,
-              summary: text.slice(0, 500), exitCode: 0 } });
+            payload: { status: 'completed', runId: connectionRunId, text, exitCode: 0 } });
         } catch (e) {
+          connectionRunPromise = null;
           send({ type: 'res', id: msg.id, ok: false,
             error: { code: 'agent_error', message: e.message } });
         }
-        connectionRunPromise = null;
         return;
       }
 
