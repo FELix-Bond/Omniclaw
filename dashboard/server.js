@@ -3195,6 +3195,10 @@ async function selfHeal() {
     let seqCounter = 0;
     const nextSeq = () => ++seqCounter;
 
+    // One pending run per connection (Paperclip opens one WS per agent invocation)
+    let connectionRunPromise = null;
+    let connectionRunId = null;
+
     const send = (obj) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
     };
@@ -3224,61 +3228,60 @@ async function selfHeal() {
 
       if (!connected) { send({ type: 'error', code: 'not_connected' }); return; }
 
-      // ── Step 3: agent.execute ─────────────────────────────────────────────
+      // ── Step 3: agent run request ─────────────────────────────────────────
       if (msg.type === 'req' && (msg.method === 'agent' || msg.method === 'agent.execute')) {
         const params = msg.params || {};
-        const { idempotencyKey, message, sessionKey } = params;
-        // agentId comes from payload.wake.agentId (Paperclip injects it) or from our config
-        const rawAgentId = params.payload?.wake?.agentId || params.agentId || 'CEO';
+        const idempotencyKey = params.idempotencyKey || params.runId || msg.id;
+        const message = params.message || '';
+        // agentId injected by Paperclip via adapterConfig or paperclip context
+        const rawAgentId = params.agentId || params.paperclip?.agentId || 'CEO';
         const personaId = rawAgentId.toUpperCase();
 
-        if (!idempotencyKey) {
-          send({ type: 'res', id: msg.id, ok: false, error: { code: 'missing_idempotency_key' } });
-          return;
-        }
+        connectionRunId = idempotencyKey;
 
-        send({ type: 'res', id: msg.id, ok: true, payload: { type: 'agent.accepted', idempotencyKey } });
+        // Acknowledge immediately
+        send({ type: 'res', id: msg.id, ok: true,
+          payload: { status: 'accepted', runId: idempotencyKey } });
 
+        console.log(`[GATEWAY] Running ${personaId} — runId=${idempotencyKey}`);
         const sysPrompt = getAgentSystemPrompt(personaId);
 
-        const runPromise = callAI([{ role: 'user', content: message || '' }], sysPrompt)
+        connectionRunPromise = callAI([{ role: 'user', content: message }], sysPrompt)
           .then(async (text) => {
-            // ── Intercept CREATE_AGENT commands ────────────────────────────
-            const createMatch = text.match(/```(?:json)?\s*\{\s*"action"\s*:\s*"create_agent"[\s\S]*?```/);
+            // ── Intercept CREATE_AGENT commands ──────────────────────────
+            const createMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?"action"\s*:\s*"create_agent"[\s\S]*?\})\s*```/);
             if (createMatch) {
               try {
-                const jsonStr = createMatch[0].replace(/```(?:json)?/g, '').trim();
-                const cmd = JSON.parse(jsonStr);
-                const agentPayload = {
+                const cmd = JSON.parse(createMatch[1]);
+                const r = await axios.post(`${PAPERCLIP_API}/api/companies/${PAPERCLIP_COMPANY_ID}/agents`, {
                   name: cmd.name, role: cmd.role || 'general',
                   adapterType: 'openclaw_gateway',
                   adapterConfig: { url: 'ws://127.0.0.1:3001/openclaw-gateway',
                     agentId: (cmd.name || '').toUpperCase().replace(/\s+/g, '_'),
-                    disableDeviceAuth: true, timeoutSec: 120 },
+                    disableDeviceAuth: true, timeoutSec: 300 },
                   instructions: cmd.instructions || ''
-                };
-                const r = await axios.post(`${PAPERCLIP_API}/api/companies/${PAPERCLIP_COMPANY_ID}/agents`,
-                  agentPayload, { timeout: 10000 });
-                text += `\n\n✅ Agent created in Paperclip: **${r.data.name}** (${r.data.id})`;
+                }, { timeout: 10000 });
+                text += `\n\n✅ Agent created: **${r.data.name}** (id: ${r.data.id})`;
               } catch (ce) {
                 text += `\n\n⚠️ Agent creation failed: ${ce.message}`;
               }
             }
 
-            // Stream as stdout lines
+            // Stream response as stdout events
             const lines = text.split('\n');
             for (const line of lines) {
               send({ type: 'event', event: 'agent',
                 payload: { stream: 'stdout', data: line + '\n' },
                 seq: nextSeq(), stateVersion: idempotencyKey });
             }
-            // Signal exit
             send({ type: 'event', event: 'agent',
               payload: { stream: 'exit', exitCode: 0 },
               seq: nextSeq(), stateVersion: idempotencyKey });
+            console.log(`[GATEWAY] ${personaId} completed — runId=${idempotencyKey}`);
             return text;
           })
           .catch((err) => {
+            console.log(`[GATEWAY] ${personaId} error: ${err.message}`);
             send({ type: 'event', event: 'agent',
               payload: { stream: 'stderr', data: `Error: ${err.message}\n` },
               seq: nextSeq(), stateVersion: idempotencyKey });
@@ -3288,33 +3291,32 @@ async function selfHeal() {
             throw err;
           });
 
-        pendingRuns[idempotencyKey] = runPromise;
         return;
       }
 
-      // ── Step 4: agent.wait ────────────────────────────────────────────────
+      // ── Step 4: agent.wait — keyed by connection, not by idempotencyKey ───
       if (msg.type === 'req' && msg.method === 'agent.wait') {
-        const { idempotencyKey } = msg.params || {};
-        const promise = pendingRuns[idempotencyKey];
-        if (!promise) {
+        if (!connectionRunPromise) {
           send({ type: 'res', id: msg.id, ok: false, error: { code: 'run_not_found' } });
           return;
         }
         try {
-          const text = await promise;
-          delete pendingRuns[idempotencyKey];
+          const text = await connectionRunPromise;
           send({ type: 'res', id: msg.id, ok: true,
-            payload: { type: 'agent.result', status: 'completed',
+            payload: { status: 'completed', runId: connectionRunId,
               summary: text.slice(0, 500), exitCode: 0 } });
         } catch (e) {
           send({ type: 'res', id: msg.id, ok: false,
             error: { code: 'agent_error', message: e.message } });
         }
+        connectionRunPromise = null;
         return;
       }
 
-      // Ignore unknown messages (heartbeat pings etc)
-      console.log('[GATEWAY] Unknown message method:', msg.method || msg.type);
+      // Log unknown messages for debugging
+      if (msg.method !== 'ping') {
+        console.log('[GATEWAY] Unhandled:', msg.type, msg.method);
+      }
     });
 
     ws.on('close', () => console.log('[GATEWAY] Paperclip client disconnected'));
