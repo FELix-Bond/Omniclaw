@@ -217,19 +217,25 @@ if (command -v docker-compose &>/dev/null || command -v docker &>/dev/null) && [
   echo "   Dashboard: http://localhost:$DASH_PORT"
   echo "   MetaClaw:  http://localhost:30000"
 else
-  # Plain Node
-  echo "Restarting dashboard (port $DASH_PORT)..."
-  pkill -f 'node.*server.js' 2>/dev/null || true
-  sleep 1
-  mkdir -p "$CURRENT_DIR/logs"
-  nohup node "$CURRENT_DIR/dashboard/server.js" >> "$CURRENT_DIR/logs/dashboard.log" 2>&1 &
-  DASH_PID=$!
-  sleep 2
-  if kill -0 "$DASH_PID" 2>/dev/null; then
-    echo -e "${GREEN}✅ Dashboard started (PID $DASH_PID).${NC}"
-    echo "   Open: http://localhost:$DASH_PORT"
+  # Use unified start.sh if present (starts both OmniClaw + Paperclip)
+  if [ -f "$CURRENT_DIR/start.sh" ]; then
+    echo "Launching via start.sh (OmniClaw + Paperclip)..."
+    bash "$CURRENT_DIR/start.sh"
   else
-    echo -e "${RED}Dashboard failed to start. Check logs/dashboard.log for errors.${NC}"
+    # Plain Node fallback
+    echo "Restarting dashboard (port $DASH_PORT)..."
+    pkill -f 'node.*server.js' 2>/dev/null || true
+    sleep 1
+    mkdir -p "$CURRENT_DIR/logs"
+    nohup node "$CURRENT_DIR/dashboard/server.js" >> "$CURRENT_DIR/logs/omniclaw.log" 2>&1 &
+    DASH_PID=$!
+    sleep 2
+    if kill -0 "$DASH_PID" 2>/dev/null; then
+      echo -e "${GREEN}✅ OmniClaw started (PID $DASH_PID).${NC}"
+      echo "   Open: http://localhost:$DASH_PORT"
+    else
+      echo -e "${RED}OmniClaw failed to start. Check logs/omniclaw.log for errors.${NC}"
+    fi
   fi
 fi
 

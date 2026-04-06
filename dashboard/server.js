@@ -3165,6 +3165,133 @@ async function selfHeal() {
 }
 
 // =============================================================================
+// OPENCLAW GATEWAY — WebSocket endpoint for Paperclip integration
+// Paperclip connects here via the openclaw-gateway adapter, sends agent
+// requests, and receives streamed responses routed through callAI().
+//
+// Protocol (simplified, disableDeviceAuth=true in Paperclip config):
+//   S→C  connect.challenge  {nonce}
+//   C→S  req connect        {clientId, role, scopes, ...}
+//   C→S  req agent          {idempotencyKey, sessionKey, message, agentId}
+//   S→C  event agent        {type:"assistant", delta:"..."} (streaming)
+//   S→C  event agent        {type:"complete", ...}
+//   C→S  req agent.wait     {idempotencyKey}
+//   S→C  res agent.wait     {status:"completed", result:{text}}
+// =============================================================================
+(function attachOpenClawGateway() {
+  const WebSocket = require('ws');
+  const gatewayWss = new WebSocket.Server({ noServer: true });
+
+  // Track in-flight requests keyed by idempotencyKey
+  const pendingRequests = {};
+
+  gatewayWss.on('connection', (ws) => {
+    console.log('[GATEWAY] Paperclip client connected');
+    let connected = false;
+
+    // Step 1 — send challenge
+    const nonce = require('crypto').randomBytes(16).toString('hex');
+    ws.send(JSON.stringify({ type: 'connect.challenge', nonce }));
+
+    ws.on('message', async (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch (_) { return; }
+
+      // Step 2 — handle connect
+      if (msg.type === 'req' && msg.method === 'connect') {
+        connected = true;
+        ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'connect', status: 'ok',
+          clientId: msg.params?.clientId || 'gateway-client' }));
+        return;
+      }
+
+      if (!connected) { ws.send(JSON.stringify({ type: 'error', code: 'not_connected' })); return; }
+
+      // Step 3 — handle agent request (the actual AI call)
+      if (msg.type === 'req' && msg.method === 'agent') {
+        const { idempotencyKey, message, agentId } = msg.params || {};
+        if (!idempotencyKey || !message) {
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'agent', status: 'error',
+            code: 'missing_params' }));
+          return;
+        }
+
+        ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'agent', status: 'accepted',
+          idempotencyKey }));
+
+        // Resolve which persona to use
+        const personaId = (agentId || 'CEO').toUpperCase();
+        const persona = AGENT_PERSONAS[personaId] || AGENT_PERSONAS['CEO'];
+        const sysPrompt = getAgentSystemPrompt(personaId);
+
+        // Store promise so agent.wait can return it
+        const resultPromise = callAI([{ role: 'user', content: message }], sysPrompt)
+          .then(text => {
+            // Stream the response back as events
+            const chunkSize = 100;
+            for (let i = 0; i < text.length; i += chunkSize) {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'event', event: 'agent',
+                  idempotencyKey, data: { type: 'assistant', delta: text.slice(i, i + chunkSize) } }));
+              }
+            }
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'event', event: 'agent',
+                idempotencyKey, data: { type: 'complete', agentId: personaId } }));
+            }
+            return text;
+          })
+          .catch(err => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'event', event: 'agent',
+                idempotencyKey, data: { type: 'error', message: err.message } }));
+            }
+            throw err;
+          });
+
+        pendingRequests[idempotencyKey] = resultPromise;
+        return;
+      }
+
+      // Step 4 — agent.wait: block until the result is ready
+      if (msg.type === 'req' && msg.method === 'agent.wait') {
+        const { idempotencyKey } = msg.params || {};
+        const promise = pendingRequests[idempotencyKey];
+        if (!promise) {
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'agent.wait',
+            status: 'error', code: 'not_found' }));
+          return;
+        }
+        try {
+          const text = await promise;
+          delete pendingRequests[idempotencyKey];
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'agent.wait',
+            status: 'ok', result: { status: 'completed', text } }));
+        } catch (e) {
+          ws.send(JSON.stringify({ type: 'res', id: msg.id, method: 'agent.wait',
+            status: 'error', code: 'agent_error', message: e.message }));
+        }
+        return;
+      }
+    });
+
+    ws.on('close', () => console.log('[GATEWAY] Paperclip client disconnected'));
+    ws.on('error', (e) => console.log('[GATEWAY] ws error:', e.message));
+  });
+
+  // Attach to the existing http.Server via upgrade event — path /openclaw-gateway
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url === '/openclaw-gateway') {
+      gatewayWss.handleUpgrade(req, socket, head, (ws) => {
+        gatewayWss.emit('connection', ws, req);
+      });
+    }
+  });
+
+  console.log('[GATEWAY] OpenClaw gateway listening at ws://localhost:PORT/openclaw-gateway');
+})();
+
+// =============================================================================
 // INIT & START
 // =============================================================================
 loadOrgChart();
