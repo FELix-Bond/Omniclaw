@@ -3338,7 +3338,9 @@ async function selfHeal() {
 async function healPaperclipAgents() {
   const PAPERCLIP_API = 'http://127.0.0.1:3100';
   const COMPANY_ID = process.env.PAPERCLIP_COMPANY_ID || 'bb7a6f5b-7333-4916-89e9-c9394b5aa421';
-  const GATEWAY_URL = `ws://127.0.0.1:${process.env.DASHBOARD_PORT || 3001}/openclaw-gateway`;
+  // OpenClaw gateway (real OpenClaw, port 18789)
+  const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'ws://127.0.0.1:18789';
+  const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
 
   try {
     const r = await axios.get(`${PAPERCLIP_API}/api/companies/${COMPANY_ID}/agents`, { timeout: 5000 });
@@ -3346,20 +3348,21 @@ async function healPaperclipAgents() {
     for (const agent of agents) {
       if (agent.adapterType !== 'openclaw_gateway') continue;
       const cfg = agent.adapterConfig || {};
-      if (cfg.url && cfg.disableDeviceAuth) continue; // already healthy
+      if (cfg.url === GATEWAY_URL) continue; // already pointing at OpenClaw
 
       const agentId = (agent.name || agent.id).toUpperCase().replace(/\s+/g, '_');
       await axios.patch(`${PAPERCLIP_API}/api/agents/${agent.id}`, {
         adapterConfig: {
           url: GATEWAY_URL,
           agentId,
-          disableDeviceAuth: true,
+          disableDeviceAuth: false,
           timeoutSec: 300,
           waitTimeoutMs: 270000,
+          ...(GATEWAY_TOKEN ? { headers: { 'x-openclaw-token': GATEWAY_TOKEN } } : {}),
         },
         ...(agent.status === 'error' ? { status: 'idle' } : {}),
       }, { timeout: 5000 });
-      console.log(`[HEAL] Patched agent ${agent.name} (${agent.id}) — added gateway URL`);
+      console.log(`[HEAL] Patched agent ${agent.name} → ${GATEWAY_URL}`);
     }
   } catch (e) {
     if (e.code !== 'ECONNREFUSED') {
