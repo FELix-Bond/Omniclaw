@@ -1022,6 +1022,7 @@ GITHUB:   [[ACTION:github_push|Commit message]] [[ACTION:github_create_issue|Tit
 SUPABASE: [[ACTION:supabase_query|table|{"col":"val"}]] [[ACTION:supabase_insert|table|{"col":"val"}]]
 SHELL:    [[ACTION:shell|any shell command]]
 AGENTS:   [[ACTION:agent_dispatch|CFO|What is our burn rate?]] [[ACTION:agent_dispatch|CTO|Review this]] [[ACTION:subagent|seo-analyst|Audit site]] [[ACTION:agent_broadcast|Message to all agents]] [[ACTION:openclaw_dispatch|marketing|Echo|Write blog post about X]] [[ACTION:openclaw_dispatch|finance|Invoice Manager|Generate invoice for client Y]] [[ACTION:codex_dispatch|codex:quality-security|Security audit this endpoint]] [[ACTION:codex_dispatch|codex:core-dev|Design this API]]
+CREATE:   [[ACTION:create_agent|Agent Name|role|System prompt instructions for this agent]]  — creates a new live agent in Paperclip immediately
 
 Chain multiple actions in one reply. Data-returning actions (web_search, web_fetch, shell, hubspot_get_deals, stripe_revenue, supabase_query, memory_read, file_read, agent_dispatch, subagent, agent_broadcast) return results you will see and synthesise into your response.`;
 
@@ -1356,6 +1357,35 @@ async function executeActions(reply, systemPromptForSynthesis) {
           data = responses.join('\n\n');
           label = `📢 Broadcast to ${responses.length} agents`;
           isData = true;
+          break;
+        }
+
+        case 'create_agent': {
+          const agentName = (parts[1] || '').trim();
+          const agentRole = (parts[2] || 'general').trim();
+          const agentInstructions = parts.slice(3).join('|').trim();
+          if (!agentName) { label = '⚠️ create_agent requires a name: [[ACTION:create_agent|Name|role|instructions]]'; break; }
+          try {
+            const paperclipApi = 'http://127.0.0.1:3100';
+            const companyId = process.env.PAPERCLIP_COMPANY_ID || 'bb7a6f5b-7333-4916-89e9-c9394b5aa421';
+            const r = await axios.post(`${paperclipApi}/api/companies/${companyId}/agents`, {
+              name: agentName,
+              role: agentRole,
+              adapterType: 'openclaw_gateway',
+              adapterConfig: {
+                url: 'ws://127.0.0.1:3001/openclaw-gateway',
+                agentId: agentName.toUpperCase().replace(/\s+/g, '_'),
+                disableDeviceAuth: true,
+                timeoutSec: 300,
+                waitTimeoutMs: 270000
+              },
+              instructions: agentInstructions
+            }, { timeout: 10000 });
+            label = `✅ Agent **${r.data.name}** created in Paperclip (id: ${r.data.id})`;
+            io.emit('openclaw:deployed', { agentId: r.data.id, name: r.data.name, category: agentRole, role: agentRole });
+          } catch (ce) {
+            label = `⚠️ Agent creation failed: ${ce.response?.data?.message || ce.message}`;
+          }
           break;
         }
 
@@ -3185,10 +3215,6 @@ async function selfHeal() {
   // Pending agent runs: idempotencyKey → Promise<string>
   const pendingRuns = {};
 
-  // Paperclip API base (for CREATE_AGENT commands)
-  const PAPERCLIP_API = 'http://127.0.0.1:3100';
-  const PAPERCLIP_COMPANY_ID = process.env.PAPERCLIP_COMPANY_ID || 'bb7a6f5b-7333-4916-89e9-c9394b5aa421';
-
   gatewayWss.on('connection', (ws) => {
     console.log('[GATEWAY] Paperclip client connected');
     let connected = false;
@@ -3253,26 +3279,10 @@ async function selfHeal() {
         // Store promise — no streaming events; deliver everything in agent.wait response
         connectionRunPromise = callAI([{ role: 'user', content: message }], sysPrompt)
           .then(async (text) => {
-            // ── Intercept CREATE_AGENT commands ──────────────────────────
-            const createMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?"action"\s*:\s*"create_agent"[\s\S]*?\})\s*```/);
-            if (createMatch) {
-              try {
-                const cmd = JSON.parse(createMatch[1]);
-                const r = await axios.post(`${PAPERCLIP_API}/api/companies/${PAPERCLIP_COMPANY_ID}/agents`, {
-                  name: cmd.name, role: cmd.role || 'general',
-                  adapterType: 'openclaw_gateway',
-                  adapterConfig: { url: 'ws://127.0.0.1:3001/openclaw-gateway',
-                    agentId: (cmd.name || '').toUpperCase().replace(/\s+/g, '_'),
-                    disableDeviceAuth: true, timeoutSec: 300 },
-                  instructions: cmd.instructions || ''
-                }, { timeout: 10000 });
-                text += `\n\n✅ Agent created: **${r.data.name}** (id: ${r.data.id})`;
-              } catch (ce) {
-                text += `\n\n⚠️ Agent creation failed: ${ce.message}`;
-              }
-            }
+            // Run [[ACTION:...]] handlers so agents can create agents, write files, etc.
+            const processed = await executeActions(text, sysPrompt);
             console.log(`[GATEWAY] ${personaId} ready — runId=${idempotencyKey}`);
-            return text;
+            return processed;
           });
 
         return;
