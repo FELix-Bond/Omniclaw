@@ -3225,7 +3225,7 @@ async function selfHeal() {
       if (!connected) { send({ type: 'error', code: 'not_connected' }); return; }
 
       // ── Step 3: agent.execute ─────────────────────────────────────────────
-      if (msg.type === 'req' && msg.method === 'agent.execute') {
+      if (msg.type === 'req' && (msg.method === 'agent' || msg.method === 'agent.execute')) {
         const params = msg.params || {};
         const { idempotencyKey, message, sessionKey } = params;
         // agentId comes from payload.wake.agentId (Paperclip injects it) or from our config
